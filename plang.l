@@ -25,17 +25,17 @@ size_t lex_non_ASCII_cnt;
 #include	"idf.h"
 
 static const struct idf reserved[] = {
-  {"block",     NORM('b')},
   {"array.create", NORM('c')},
-  {"for",       NORM('f')},
   {"array.get", NORM('g')},
+  {"array.set", NORM('T')},
+  {"block",     NORM('b')},
+  {"for",       NORM('f')},
+  {"function",  NORM('F')},
   {"if",        NORM('i')},
   {"print",     NORM('p')},
   {"return",    NORM('r')},
   {"scan",      NORM('s')},
-  {"function",  NORM('F')},
   {"set",       NORM('S')},
-  {"array.set", NORM('T')},
 };
 
 /* Token sets for properties module */
