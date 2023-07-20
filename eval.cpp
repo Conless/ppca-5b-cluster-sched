@@ -16,7 +16,7 @@ int main (int argc, char **argv) {
     }
     auto *p = scanProgram(code);
     std::cout << p->toString();
-    p->eval();
+    p->eval(100000);
   } catch (const EvalError &e) {
     std::cerr << e.what() << std::endl;
     return 1;

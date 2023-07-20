@@ -42,6 +42,7 @@ struct VariableSet {
 struct Context {
   std::stack<VariableSet> callStack;
   Program *program;
+  int timeLeft;
 
   VariableSet &currentFrame() { return callStack.top(); }
   ValuePtr getOrThrow(const Construct *ctx, const std::string &name) {
@@ -50,15 +51,23 @@ struct Context {
   void set(const std::string &name, ValuePtr value) {
     currentFrame().values[name] = value;
   }
+  void tick() {
+    --timeLeft;
+    if (timeLeft < 0) {
+      throw RuntimeError(nullptr, "Time limit exceeded");
+    }
+  }
 };
 
 std::string IntegerLiteral::toString() const { return std::to_string(value); }
 ValuePtr IntegerLiteral::eval(Context &ctx) const {
+  ctx.tick();
   return std::make_shared<IntValue>(value);
 }
 
 std::string Variable::toString() const { return name; }
 ValuePtr Variable::eval(Context &ctx) const {
+  ctx.tick();
   return ctx.getOrThrow(this, name);
 }
 
@@ -78,6 +87,7 @@ std::string CallExpression::toString() const {
   return str;
 }
 ValuePtr CallExpression::eval(Context &ctx) const {
+  ctx.tick();
   std::vector<ValuePtr> argValues;
   for (const auto &arg : args) {
     argValues.push_back(arg->eval(ctx));
@@ -248,13 +258,17 @@ static std::string indent(const std::string &s) {
 std::string SetStatement::toString() const {
   return std::string("(set ") + name + " " + value->toString() + ")";
 }
-void SetStatement::eval(Context &ctx) const { ctx.set(name, value->eval(ctx)); }
+void SetStatement::eval(Context &ctx) const {
+  ctx.tick();
+  ctx.set(name, value->eval(ctx));
+}
 
 std::string IfStatement::toString() const {
   return std::string("(if ") + condition->toString() + "\n" +
          indent(body->toString()) + ")";
 }
 void IfStatement::eval(Context &ctx) const {
+  ctx.tick();
   bool ok = isTruthy(condition->eval(ctx));
   if (ok) {
     body->eval(ctx);
@@ -267,6 +281,7 @@ std::string ForStatement::toString() const {
          indent(body->toString()) + ")";
 }
 void ForStatement::eval(Context &ctx) const {
+  ctx.tick();
   for (init->eval(ctx); isTruthy(test->eval(ctx)); update->eval(ctx)) {
     body->eval(ctx);
   }
@@ -328,10 +343,11 @@ std::string Program::toString() const {
   }
   return str;
 }
-void Program::eval() {
+void Program::eval(int timeLimit) {
   Context ctx{
       .callStack = {},
       .program = this,
+      .timeLeft = timeLimit,
   };
   CallExpression("main", {}).eval(ctx);
 }
