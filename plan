@@ -6,7 +6,7 @@ print value
 
 123
 varname
-call funcname arg1 arg2 ...
+funcname arg1 arg2 ...
 
 set varname expr
 if cond stmt
@@ -15,4 +15,3 @@ block stmt ...
 return value
 
 function (funcname arg1 arg2 ...) body
-global varname

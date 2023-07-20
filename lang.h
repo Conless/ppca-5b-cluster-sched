@@ -1,29 +1,9 @@
 #include <exception>
 #include <istream>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
-
-
-// +------------------------------------+
-// |            Exceptions              |
-// +------------------------------------+
-
-class EvalError : public std::exception {};
-class SyntaxError : public EvalError {
- public:
-  std::string reason;
-  SyntaxError(const std::string &reason) : reason("Syntax error: " + reason) {}
-  const char *what() const noexcept override { return reason.c_str(); }
-};
-class RuntimeError : public EvalError {
- public:
-  std::string reason;
-  RuntimeError(const std::string &reason)
-      : reason("Runtime error: " + reason) {}
-  const char *what() const noexcept override { return reason.c_str(); }
-};
-
 
 // +------------------------------------+
 // |              Values                |
@@ -33,6 +13,7 @@ class Value {
  public:
   virtual ~Value() {}
 };
+using ValuePtr = std::shared_ptr<Value>;
 
 class IntValue : public Value {
  public:
@@ -45,11 +26,7 @@ class ArrayValue : public Value {
   int length;
   int *contents;
   ArrayValue(int length);
-};
-
-struct VariableSet {
-  std::unordered_map<std::string, Value *> values;
-  Value *getOrThrow(const std::string &name);
+  ~ArrayValue() override;
 };
 
 
@@ -82,7 +59,7 @@ class Construct {
 
 class Expression : public Construct {
  public:
-  virtual Value *eval(Context &ctx) const = 0;
+  virtual ValuePtr eval(Context &ctx) const = 0;
 };
 
 class IntegerLiteral : public Expression {
@@ -91,16 +68,16 @@ class IntegerLiteral : public Expression {
 
   IntegerLiteral(int value) : value(value) {}
   std::string toString() const override;
-  Value *eval(Context &ctx) const override;
+  ValuePtr eval(Context &ctx) const override;
 };
 
 class Variable : public Expression {
  public:
   std::string name;
 
-  Variable(const std::string &name) : name(name) {}
+  Variable(std::string name) : name(std::move(name)) {}
   std::string toString() const override;
-  Value *eval(Context &ctx) const override;
+  ValuePtr eval(Context &ctx) const override;
 };
 
 class CallExpression : public Expression {
@@ -108,10 +85,10 @@ class CallExpression : public Expression {
   std::string func;
   std::vector<Expression *> args;
 
-  CallExpression(const std::string &func, const std::vector<Expression *> &args)
-      : func(func), args(args) {}
+  CallExpression(std::string func, std::vector<Expression *> args)
+      : func(std::move(func)), args(std::move(args)) {}
   std::string toString() const override;
-  Value *eval(Context &ctx) const override;
+  ValuePtr eval(Context &ctx) const override;
 };
 
 
@@ -129,8 +106,8 @@ class SetStatement : public Statement {
   std::string name;
   Expression *value;
 
-  SetStatement(const std::string &name, Expression *value)
-      : name(name), value(value) {}
+  SetStatement(std::string name, Expression *value)
+      : name(std::move(name)), value(value) {}
   std::string toString() const override;
   void eval(Context &ctx) const override;
 };
@@ -164,7 +141,7 @@ class BlockStatement : public Statement {
  public:
   std::vector<Statement *> body;
 
-  BlockStatement(const std::vector<Statement *> &body) : body(body) {}
+  BlockStatement(std::vector<Statement *> body) : body(std::move(body)) {}
   std::string toString() const override;
   void eval(Context &ctx) const override;
 };
@@ -183,36 +160,57 @@ class ReturnStatement : public Statement {
 // |        Global Constructs           |
 // +------------------------------------+
 
-class ProgramElement : public Construct {};
-
-class FunctionDeclaration : public ProgramElement {
+class FunctionDeclaration : public Construct {
  public:
   std::string name;
   std::vector<std::string> params;
   Statement *body;
 
-  FunctionDeclaration(const std::string &name,
-                      const std::vector<std::string> &params, Statement *body)
-      : name(name), params(params), body(body) {}
-  std::string toString() const override;
-};
-
-class GlobalVariable : public ProgramElement {
- public:
-  std::string name;
-
-  GlobalVariable(const std::string &name) : name(name) {}
+  FunctionDeclaration(std::string name, std::vector<std::string> params,
+                      Statement *body)
+      : name(std::move(name)), params(std::move(params)), body(body) {}
   std::string toString() const override;
 };
 
 class Program : public Construct {
  public:
-  std::vector<ProgramElement *> body;
-  std::unordered_map<std::string, ProgramElement *> index;
+  std::vector<FunctionDeclaration *> body;
+  std::unordered_map<std::string, FunctionDeclaration *> index;
 
-  Program(const std::vector<ProgramElement *> &body);
+  Program(std::vector<FunctionDeclaration *> body);
   std::string toString() const override;
   void eval();
+};
+
+
+// +------------------------------------+
+// |            Exceptions              |
+// +------------------------------------+
+
+class EvalError : public std::exception {
+ public:
+  const Construct *location;
+  std::string reason;
+
+  EvalError(const Construct *location, const std::string &reason_)
+      : location(location) {
+    if (location == nullptr) {
+      reason = reason_;
+      return;
+    }
+    reason = "At " + location->toString() + ":\n" + reason_;
+  }
+  const char *what() const noexcept override { return reason.c_str(); }
+};
+class SyntaxError : public EvalError {
+ public:
+  SyntaxError(const Construct *location, const std::string &reason)
+      : EvalError(location, "Syntax error: " + reason) {}
+};
+class RuntimeError : public EvalError {
+ public:
+  RuntimeError(const Construct *location, const std::string &reason)
+      : EvalError(location, "Runtime error: " + reason) {}
 };
 
 

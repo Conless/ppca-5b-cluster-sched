@@ -4,8 +4,16 @@
 #include "lang.h"
 
 int main (int argc, char **argv) {
+  if (argc < 2) {
+    std::cerr << "Usage: " << argv[0] << " [source-file]" << std::endl;
+    return 2;
+  }
   try {
     auto code = std::ifstream(argv[1]);
+    if (!code) {
+      std::cerr << "Source file '" << argv[1] << "' not found" << std::endl;
+      return 2;
+    }
     auto *p = scanProgram(code);
     std::cout << p->toString();
     p->eval();

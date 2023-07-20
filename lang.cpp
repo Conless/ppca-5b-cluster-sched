@@ -6,64 +6,63 @@
 #include <unordered_set>
 
 const int kIdMaxLength = 255;
-const std::vector<std::string> keywords = {
-    "set", "if", "for", "block", "return", "function", "global",
+const std::unordered_set<std::string> keywords = {
+    "set", "if", "for", "block", "return", "function",
 };
-const std::vector<std::string> builtinFunctions = {
-    "+", "-", "*", "/", "%", "<", ">", "<=", ">=", "==", "!=", "||", "&&", "!", "scan",
-    "print", "array.create", "array.get", "array.set",
+const std::unordered_set<std::string> builtinFunctions = {
+    "+", "-", "*", "/", "%", "<", ">", "<=", ">=", "==", "!=", "||", "&&", "!",
+    "scan", "print", "array.create", "array.get", "array.set",
 };
 
-static bool isTruthy(Value *value) {
-  auto *iv = dynamic_cast<IntValue *>(value);
+static bool isTruthy(ValuePtr value) {
+  auto iv = std::dynamic_pointer_cast<IntValue>(value);
   return iv != nullptr && iv->value != 0;
 }
 
-ArrayValue::ArrayValue(int length) {
-  if (length > 1000000) throw RuntimeError("Out of memory");
+ArrayValue::ArrayValue(int length) : length(length) {
+  if (length > 1000000) throw RuntimeError(nullptr, "Out of memory");
   contents = new int[length];
 }
+ArrayValue::~ArrayValue() { delete[] contents; }
 
-Value *VariableSet::getOrThrow(const std::string &name) {
-  if (values.count(name) == 0) {
-    throw RuntimeError("Use of undefined variable: " + name);
+struct VariableSet {
+  std::unordered_map<std::string, ValuePtr> values;
+  ValuePtr getOrThrow(const Construct *ctx, const std::string &name) {
+    if (values.count(name) == 0) {
+      throw RuntimeError(ctx, "Use of undefined variable: " + name);
+    }
+    if (values[name] == nullptr) {
+      throw RuntimeError(ctx, "Use of uninitialized variable: " + name);
+    }
+    return values[name];
   }
-  if (values[name] == nullptr) {
-    throw RuntimeError("Use of uninitialized variable: " + name);
-  }
-  return values[name];
-}
+};
 
 struct Context {
-  VariableSet globalVars;
   std::stack<VariableSet> callStack;
   Program *program;
 
   VariableSet &currentFrame() { return callStack.top(); }
-  Value *getOrThrow(const std::string &name) {
-    if (globalVars.values.count(name) > 0) {
-      return globalVars.values[name];
-    }
-    return currentFrame().getOrThrow(name);
+  ValuePtr getOrThrow(const Construct *ctx, const std::string &name) {
+    return currentFrame().getOrThrow(ctx, name);
   }
-  void set(const std::string &name, Value *value) {
-    if (globalVars.values.count(name) > 0) {
-      globalVars.values[name] = value;
-    } else {
-      currentFrame().values[name] = value;
-    }
+  void set(const std::string &name, ValuePtr value) {
+    currentFrame().values[name] = value;
   }
 };
 
-
 std::string IntegerLiteral::toString() const { return std::to_string(value); }
-Value *IntegerLiteral::eval(Context &ctx) const { return new IntValue(value); }
+ValuePtr IntegerLiteral::eval(Context &ctx) const {
+  return std::make_shared<IntValue>(value);
+}
 
 std::string Variable::toString() const { return name; }
-Value *Variable::eval(Context &ctx) const { return ctx.getOrThrow(name); }
+ValuePtr Variable::eval(Context &ctx) const {
+  return ctx.getOrThrow(this, name);
+}
 
 struct ReturnFromCall {
-  Value *value;
+  ValuePtr value;
 };
 std::string CallExpression::toString() const {
   std::string str = std::string("(") + func;
@@ -74,131 +73,131 @@ std::string CallExpression::toString() const {
   str += ")";
   return str;
 }
-Value *CallExpression::eval(Context &ctx) const {
-  std::vector<Value *> argValues;
+ValuePtr CallExpression::eval(Context &ctx) const {
+  std::vector<ValuePtr> argValues;
   for (const auto &arg : args) {
     argValues.push_back(arg->eval(ctx));
   }
 
   auto requireArity = [&](int arity) {
     if (args.size() != arity) {
-      throw RuntimeError("Function arity mismatch at " + func);
+      throw RuntimeError(this, "Function arity mismatch at " + func);
     }
   };
   auto readInt = [&](int ix) {
-    auto *iv = dynamic_cast<IntValue *>(argValues[ix]);
-    if (!iv) throw RuntimeError("Type error: int expected");
+    auto iv = std::dynamic_pointer_cast<IntValue>(argValues[ix]);
+    if (!iv) throw RuntimeError(this, "Type error: int expected");
     return iv->value;
   };
 
   if (func == "+") {
     requireArity(2);
     int x = readInt(0), y = readInt(1);
-    return new IntValue(x + y);
+    return std::make_shared<IntValue>(x + y);
   } else if (func == "-") {
     requireArity(2);
     int x = readInt(0), y = readInt(1);
-    return new IntValue(x - y);
+    return std::make_shared<IntValue>(x - y);
   } else if (func == "*") {
     requireArity(2);
     int x = readInt(0), y = readInt(1);
-    return new IntValue(x * y);
+    return std::make_shared<IntValue>(x * y);
   } else if (func == "/") {
     requireArity(2);
     int x = readInt(0), y = readInt(1);
     if (y == 0) {
-      throw RuntimeError("Divide by zero");
+      throw RuntimeError(this, "Divide by zero");
     }
-    return new IntValue(x / y);
+    return std::make_shared<IntValue>(x / y);
   } else if (func == "%") {
     requireArity(2);
     int x = readInt(0), y = readInt(1);
     if (y == 0) {
-      throw RuntimeError("Mod by zero");
+      throw RuntimeError(this, "Mod by zero");
     }
-    return new IntValue(x % y);
+    return std::make_shared<IntValue>(x % y);
   } else if (func == "<") {
     requireArity(2);
     int x = readInt(0), y = readInt(1);
-    return new IntValue(x < y);
+    return std::make_shared<IntValue>(x < y);
   } else if (func == ">") {
     requireArity(2);
     int x = readInt(0), y = readInt(1);
-    return new IntValue(x > y);
+    return std::make_shared<IntValue>(x > y);
   } else if (func == "<=") {
     requireArity(2);
     int x = readInt(0), y = readInt(1);
-    return new IntValue(x <= y);
+    return std::make_shared<IntValue>(x <= y);
   } else if (func == ">=") {
     requireArity(2);
     int x = readInt(0), y = readInt(1);
-    return new IntValue(x >= y);
+    return std::make_shared<IntValue>(x >= y);
   } else if (func == "==") {
     requireArity(2);
     int x = readInt(0), y = readInt(1);
-    return new IntValue(x == y);
+    return std::make_shared<IntValue>(x == y);
   } else if (func == "!=") {
     requireArity(2);
     int x = readInt(0), y = readInt(1);
-    return new IntValue(x != y);
+    return std::make_shared<IntValue>(x != y);
   } else if (func == "||") {
     requireArity(2);
     int x = readInt(0), y = readInt(1);
-    return new IntValue(x || y);
+    return std::make_shared<IntValue>(x || y);
   } else if (func == "&&") {
     requireArity(2);
     int x = readInt(0), y = readInt(1);
-    return new IntValue(x && y);
+    return std::make_shared<IntValue>(x && y);
   } else if (func == "!") {
     requireArity(1);
     int x = readInt(0);
-    return new IntValue(!x);
+    return std::make_shared<IntValue>(!x);
   } else if (func == "scan") {
     requireArity(0);
     int x;
     std::cin >> x;
-    return new IntValue(x);
+    return std::make_shared<IntValue>(x);
   } else if (func == "print") {
     requireArity(1);
     std::cout << readInt(0) << '\n';
-    return new IntValue(0);
+    return std::make_shared<IntValue>(0);
   } else if (func == "array.create") {
     requireArity(1);
-    return new ArrayValue(readInt(0));
+    return std::make_shared<ArrayValue>(readInt(0));
   } else if (func == "array.get") {
     requireArity(2);
-    auto *array = dynamic_cast<ArrayValue *>(argValues[0]);
+    auto array = std::dynamic_pointer_cast<ArrayValue>(argValues[0]);
     int index = readInt(1);
-    if (!array) throw RuntimeError("Type error at array.get: array expected");
+    if (!array)
+      throw RuntimeError(this, "Type error at array.get: array expected");
     if (index >= array->length || index < 0) {
-      throw RuntimeError("Index out of bounds at array.get");
+      throw RuntimeError(this, "Index out of bounds at array.get");
     }
-    return new IntValue(array->contents[index]);
+    return std::make_shared<IntValue>(array->contents[index]);
   } else if (func == "array.set") {
     requireArity(3);
-    auto *array = dynamic_cast<ArrayValue *>(argValues[0]);
+    auto array = std::dynamic_pointer_cast<ArrayValue>(argValues[0]);
     int index = readInt(1);
     int value = readInt(2);
-    if (!array) throw RuntimeError("Type error at array.set: array expected");
+    if (!array)
+      throw RuntimeError(this, "Type error at array.set: array expected");
     if (index >= array->length || index < 0) {
-      throw RuntimeError("Index out of bounds at array.set");
+      throw RuntimeError(this, "Index out of bounds at array.set");
     }
     array->contents[index] = value;
-    return new IntValue(0);
+    return std::make_shared<IntValue>(0);
   }
 
-  auto *maybeFunc = ctx.program->index[func];
-  if (!maybeFunc || !maybeFunc->is<FunctionDeclaration>())
-    throw RuntimeError("No such function: " + func);
-  auto *funcObject = maybeFunc->as<FunctionDeclaration>();
+  auto *funcObject = ctx.program->index[func];
+  if (!funcObject) throw RuntimeError(this, "No such function: " + func);
   requireArity(funcObject->params.size());
 
   ctx.callStack.push({});
   for (int i = 0; i < args.size(); ++i) {
     const auto &name = funcObject->params[i];
     if (ctx.program->index.count(name) > 0) {
-      throw RuntimeError("Function parameter name is global identifier: " +
-                         name);
+      throw RuntimeError(
+          this, "Function parameter name is global identifier: " + name);
     }
     ctx.set(name, argValues[i]);
   }
@@ -211,9 +210,8 @@ Value *CallExpression::eval(Context &ctx) const {
   }
 
   ctx.callStack.pop();
-  return new IntValue(0);
+  return std::make_shared<IntValue>(0);
 }
-
 
 static std::string indent(const std::string &s) {
   std::string res = "  ";
@@ -288,26 +286,15 @@ std::string FunctionDeclaration::toString() const {
   return str;
 }
 
-std::string GlobalVariable::toString() const {
-  return std::string("(global ") + name + ")";
-}
-
-Program::Program(const std::vector<ProgramElement *> &body) : body(body) {
-  for (auto el : body) {
-    std::string name;
-    if (el->is<FunctionDeclaration>()) {
-      name = el->as<FunctionDeclaration>()->name;
-    } else {
-      name = el->as<GlobalVariable>()->name;
-    }
-
-    for (const auto &f : builtinFunctions) {
-      if (name == f) {
-        throw SyntaxError("Redefining built-in construct: " + name);
-      }
+Program::Program(std::vector<FunctionDeclaration *> body)
+    : body(std::move(body)) {
+  for (auto el : this->body) {
+    const auto &name = el->name;
+    if (builtinFunctions.count(name) > 0) {
+      throw SyntaxError(nullptr, "Redefining built-in function: " + name);
     }
     if (index.count(name) > 0) {
-      throw SyntaxError("Duplicate program element: " + name);
+      throw SyntaxError(nullptr, "Duplicate function declaration: " + name);
     }
     index[name] = el;
   }
@@ -321,14 +308,7 @@ std::string Program::toString() const {
   return str;
 }
 void Program::eval() {
-  VariableSet globalVars;
-  for (const auto &el : body) {
-    if (el->is<GlobalVariable>()) {
-      globalVars.values[el->as<GlobalVariable>()->name] = nullptr;
-    }
-  }
   Context ctx{
-      .globalVars = std::move(globalVars),
       .callStack = {},
       .program = this,
   };
@@ -343,9 +323,7 @@ static bool isValidIdentifier(const std::string &name) {
     if (ch == ')' || ch == '(' || ch == ';') return false;
     if (!isgraph(ch)) return false;
   }
-  for (const auto &kw : keywords) {
-    if (name == kw) return false;
-  }
+  if (keywords.count(name) > 0) return false;
   return true;
 }
 
@@ -364,8 +342,8 @@ static void expectClosingParens(std::istream &is) {
   removeWhitespaces(is);
   int ch = is.get();
   if (ch != ')') {
-    throw SyntaxError(std::string("Closing parenthesis expected, got ") +
-                      char(ch));
+    throw SyntaxError(
+        nullptr, std::string("Closing parenthesis expected, got ") + char(ch));
   }
 }
 
@@ -382,18 +360,18 @@ static std::string scanToken(std::istream &is) {
 static std::string scanIdentifier(std::istream &is) {
   auto name = scanToken(is);
   if (!isValidIdentifier(name))
-    throw SyntaxError("Invalid identifier: " + name);
+    throw SyntaxError(nullptr, "Invalid identifier: " + name);
   return name;
 }
 
 template <typename T>
 static T *scanT(std::istream &is) {
   auto *construct = scan(is);
-  if (construct == nullptr) throw SyntaxError("Unexpected EOF");
+  if (construct == nullptr) throw SyntaxError(nullptr, "Unexpected EOF");
   if (!construct->is<T>()) {
-    throw SyntaxError(std::string("Wrong construct type; ") +
-                      typeid(*construct).name() + " found, " +
-                      typeid(T).name() + " expected");
+    throw SyntaxError(nullptr, std::string("Wrong construct type; ") +
+                                   typeid(*construct).name() + " found, " +
+                                   typeid(T).name() + " expected");
   }
   return construct->as<T>();
 }
@@ -408,7 +386,8 @@ Construct *scan(std::istream &is) {
     if (name.empty()) return nullptr;
     if (isdigit(name[0])) {
       for (char ch : name) {
-        if (!isdigit(ch)) throw SyntaxError("Invalid literal: " + name);
+        if (!isdigit(ch))
+          throw SyntaxError(nullptr, "Invalid literal: " + name);
       }
       int value = std::stoi(name);
       return new IntegerLiteral(value);
@@ -416,7 +395,7 @@ Construct *scan(std::istream &is) {
     if (isValidIdentifier(name)) {
       return new Variable(name);
     }
-    throw SyntaxError("Invalid identifier name: " + name);
+    throw SyntaxError(nullptr, "Invalid identifier: " + name);
   }
   is.get();
 
@@ -454,7 +433,7 @@ Construct *scan(std::istream &is) {
   } else if (type == "function") {
     removeWhitespaces(is);
     if (is.get() != '(') {
-      throw SyntaxError("Opening parenthesis expected");
+      throw SyntaxError(nullptr, "Opening parenthesis expected");
     }
     auto name = scanIdentifier(is);
     std::vector<std::string> params;
@@ -467,15 +446,11 @@ Construct *scan(std::istream &is) {
     auto *body = scanT<Statement>(is);
     expectClosingParens(is);
     return new FunctionDeclaration(name, params, body);
-  } else if (type == "global") {
-    auto name = scanIdentifier(is);
-    expectClosingParens(is);
-    return new GlobalVariable(name);
   } else {
     // call expression
     auto &name = type;
     if (!isValidIdentifier(name))
-      throw SyntaxError("Invalid identifier: " + name);
+      throw SyntaxError(nullptr, "Invalid identifier: " + name);
     std::vector<Expression *> args;
     removeWhitespaces(is);
     while (is.peek() != ')') {
@@ -488,14 +463,14 @@ Construct *scan(std::istream &is) {
 }
 
 Program *scanProgram(std::istream &is) {
-  std::vector<ProgramElement *> body;
+  std::vector<FunctionDeclaration *> body;
   while (true) {
     auto *el = scan(is);
     if (el == nullptr) break;
-    if (!el->is<ProgramElement>()) {
-      throw SyntaxError("Invalid program element");
+    if (!el->is<FunctionDeclaration>()) {
+      throw SyntaxError(nullptr, "Invalid program element");
     }
-    body.push_back(el->as<ProgramElement>());
+    body.push_back(el->as<FunctionDeclaration>());
   }
   return new Program(body);
 }
