@@ -3,6 +3,7 @@
 #include <cctype>
 #include <iostream>
 #include <stack>
+#include <type_traits>
 #include <unordered_set>
 
 const int kIdMaxLength = 255;
@@ -11,7 +12,7 @@ const std::unordered_set<std::string> keywords = {
 };
 const std::unordered_set<std::string> builtinFunctions = {
     "+", "-", "*", "/", "%", "<", ">", "<=", ">=", "==", "!=", "||", "&&", "!",
-    "scan", "print", "array.create", "array.get", "array.set",
+    "scan", "print", "array.create", "array.get", "array.set", "array.scan", "array.print",
 };
 
 static bool isTruthy(ValuePtr value) {
@@ -60,6 +61,9 @@ std::string Variable::toString() const { return name; }
 ValuePtr Variable::eval(Context &ctx) const {
   return ctx.getOrThrow(this, name);
 }
+
+std::string ExpressionStatement::toString() const { return expr->toString(); }
+void ExpressionStatement::eval(Context &ctx) const { expr->eval(ctx); }
 
 struct ReturnFromCall {
   ValuePtr value;
@@ -164,6 +168,23 @@ ValuePtr CallExpression::eval(Context &ctx) const {
   } else if (func == "array.create") {
     requireArity(1);
     return std::make_shared<ArrayValue>(readInt(0));
+  } else if (func == "array.scan") {
+    requireArity(1);
+    int length = readInt(0);
+    auto array = std::make_shared<ArrayValue>(length);
+    for (int i = 0; i < length; ++i) {
+      std::cin >> array->contents[i];
+    }
+    return array;
+  } else if (func == "array.print") {
+    requireArity(1);
+    auto array = std::dynamic_pointer_cast<ArrayValue>(argValues[0]);
+    if (!array)
+      throw RuntimeError(this, "Type error at array.get: array expected");
+    for (int i = 0; i < array->length; ++i) {
+      std::cout << array->contents[i] << std::endl;
+    }
+    return std::make_shared<IntValue>(0);
   } else if (func == "array.get") {
     requireArity(2);
     auto array = std::dynamic_pointer_cast<ArrayValue>(argValues[0]);
@@ -369,6 +390,11 @@ static T *scanT(std::istream &is) {
   auto *construct = scan(is);
   if (construct == nullptr) throw SyntaxError(nullptr, "Unexpected EOF");
   if (!construct->is<T>()) {
+    if constexpr (std::is_same_v<T, Statement>) {
+      if (construct->is<Expression>()) {
+        return new ExpressionStatement(construct->as<Expression>());
+      }
+    }
     throw SyntaxError(nullptr, std::string("Wrong construct type; ") +
                                    typeid(*construct).name() + " found, " +
                                    typeid(T).name() + " expected");

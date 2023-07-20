@@ -101,6 +101,15 @@ class Statement : public Construct {
   virtual void eval(Context &ctx) const = 0;
 };
 
+class ExpressionStatement : public Statement {
+ public:
+  Expression *expr;
+
+  ExpressionStatement(Expression *expr) : expr(expr) {}
+  std::string toString() const override;
+  void eval(Context &ctx) const override;
+};
+
 class SetStatement : public Statement {
  public:
   std::string name;
