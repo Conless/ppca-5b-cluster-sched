@@ -1,0 +1,18 @@
+array_create length
+array_get array index
+array_set array index value
+scan
+print value
+
+123
+varname
+call funcname arg1 arg2 ...
+
+set varname expr
+if cond stmt
+for stmt expr stmt stmt
+block stmt ...
+return value
+
+function (funcname arg1 arg2 ...) body
+global varname

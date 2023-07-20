@@ -1,0 +1,42 @@
+(function (selection-sort a n)
+  (for
+    (set i 0)
+    (< i (- n 1))
+    (set i (+ i 1))
+    (block
+      (set min-pos i)
+      (for
+        (set j (+ i 1))
+        (< j n)
+        (set j (+ j 1))
+        (if (< (array.get a j) (array.get a min-pos))
+          (set min-pos j)
+        )
+      )
+      (set t (array.get a i))
+      (set _ (array.set a i (array.get a min-pos)))
+      (set _ (array.set a min-pos t))
+    )
+  )
+)
+
+(function (main)
+  (block
+    (set n (scan))
+    (set a (array.create n))
+    (for
+      (set i 0)
+      (< i n)
+      (set i (+ i 1))
+      (set _ (array.set a i (scan)))
+    )
+    (set _ (selection-sort a n))
+    (for
+      (set i 0)
+      (< i n)
+      (set i (+ i 1))
+      (set _ (print (array.get a i)))
+    )
+    (return 0)
+  )
+)

@@ -1,0 +1,12 @@
+*.o
+*.d
+eval
+
+*.out
+*.log
+*.local
+
+compile_commands.json
+.cache
+.vscode
+.idea
