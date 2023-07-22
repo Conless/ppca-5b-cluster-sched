@@ -64,15 +64,12 @@
         (copy tmp1 exp)
         (set number (/ number 2))
       )
-      
+
     )
     (return (array.get value 1))
   )
 )
 
 (function (main)
-  (block
-    (set n (scan))
-    (print (fib n))
-  )
+  (print (fib (scan)))
 )

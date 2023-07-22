@@ -23,8 +23,5 @@
 )
 
 (function (main)
-  (block
-    (set n (scan))
-    (print (fib n))
-  )
+  (print (fib (scan)))
 )
