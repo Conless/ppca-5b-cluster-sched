@@ -1,0 +1,21 @@
+(function (fib buf n)
+  (block
+    (if (<= n 2)
+      (return 1)
+    )
+    (set cached (array.get buf n))
+    (if (> cached 0)
+      (return cached)
+    )
+    (set res (+ (fib buf (- n 1)) (fib buf (- n 2))))
+    (array.set buf n res)
+    (return res)
+  )
+)
+
+(function (main)
+  (block
+    (set n (scan))
+    (print (fib (array.create (+ n 1)) n))
+  )
+)

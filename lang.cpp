@@ -26,6 +26,7 @@ static bool isTruthy(const Construct *ctx, ValuePtr value) {
 ArrayValue::ArrayValue(int length) : length(length) {
   if (length > 1000000) throw RuntimeError(nullptr, "Out of memory");
   contents = new int[length];
+  for (int i = 0; i < length; ++i) contents[i] = 0;
 }
 ArrayValue::~ArrayValue() { delete[] contents; }
 
