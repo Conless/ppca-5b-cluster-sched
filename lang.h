@@ -68,7 +68,7 @@ class IntegerLiteral : public Expression {
  public:
   int value;
 
-  IntegerLiteral(int value) : value(value) {}
+  IntegerLiteral(int value);
   std::string toString() const override;
   ValuePtr eval(Context &ctx) const override;
 };

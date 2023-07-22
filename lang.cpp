@@ -15,9 +15,12 @@ const std::unordered_set<std::string> builtinFunctions = {
     "scan", "print", "array.create", "array.get", "array.set", "array.scan", "array.print",
 };
 
-static bool isTruthy(ValuePtr value) {
+static bool isTruthy(const Construct *ctx, ValuePtr value) {
   auto iv = std::dynamic_pointer_cast<IntValue>(value);
-  return iv != nullptr && iv->value != 0;
+  if (iv == nullptr) {
+    throw RuntimeError(ctx, "Type error: if condition should be an int");
+  }
+  return iv->value != 0;
 }
 
 ArrayValue::ArrayValue(int length) : length(length) {
@@ -48,7 +51,10 @@ struct Context {
   ValuePtr getOrThrow(const Construct *ctx, const std::string &name) {
     return currentFrame().getOrThrow(ctx, name);
   }
-  void set(const std::string &name, ValuePtr value) {
+  void set(const Construct *ctx, const std::string &name, ValuePtr value) {
+    if (program->index.count(name) > 0 || builtinFunctions.count(name) > 0) {
+      throw RuntimeError(ctx, "Assigning to function " + name);
+    }
     currentFrame().values[name] = value;
   }
   void tick() {
@@ -59,6 +65,11 @@ struct Context {
   }
 };
 
+IntegerLiteral::IntegerLiteral(int value) : value(value) {
+  if (value < 0) {
+    throw SyntaxError(this, "Negative literal not allowed");
+  }
+}
 std::string IntegerLiteral::toString() const { return std::to_string(value); }
 ValuePtr IntegerLiteral::eval(Context &ctx) const {
   ctx.tick();
@@ -230,7 +241,7 @@ ValuePtr CallExpression::eval(Context &ctx) const {
       throw RuntimeError(
           this, "Function parameter name is global identifier: " + name->name);
     }
-    ctx.set(name->name, argValues[i]);
+    ctx.set(this, name->name, argValues[i]);
   }
 
   try {
@@ -260,7 +271,7 @@ std::string SetStatement::toString() const {
 }
 void SetStatement::eval(Context &ctx) const {
   ctx.tick();
-  ctx.set(name->name, value->eval(ctx));
+  ctx.set(this, name->name, value->eval(ctx));
 }
 
 std::string IfStatement::toString() const {
@@ -269,7 +280,7 @@ std::string IfStatement::toString() const {
 }
 void IfStatement::eval(Context &ctx) const {
   ctx.tick();
-  bool ok = isTruthy(condition->eval(ctx));
+  bool ok = isTruthy(this, condition->eval(ctx));
   if (ok) {
     body->eval(ctx);
   }
@@ -282,7 +293,7 @@ std::string ForStatement::toString() const {
 }
 void ForStatement::eval(Context &ctx) const {
   ctx.tick();
-  for (init->eval(ctx); isTruthy(test->eval(ctx)); update->eval(ctx)) {
+  for (init->eval(ctx); isTruthy(this, test->eval(ctx)); update->eval(ctx)) {
     body->eval(ctx);
   }
 }
