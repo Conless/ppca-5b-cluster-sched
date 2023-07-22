@@ -114,11 +114,10 @@ class ExpressionStatement : public Statement {
 
 class SetStatement : public Statement {
  public:
-  std::string name;
+  Variable *name;
   Expression *value;
 
-  SetStatement(std::string name, Expression *value)
-      : name(std::move(name)), value(value) {}
+  SetStatement(Variable *name, Expression *value) : name(name), value(value) {}
   std::string toString() const override;
   void eval(Context &ctx) const override;
 };
@@ -174,10 +173,10 @@ class ReturnStatement : public Statement {
 class FunctionDeclaration : public Construct {
  public:
   std::string name;
-  std::vector<std::string> params;
+  std::vector<Variable *> params;
   Statement *body;
 
-  FunctionDeclaration(std::string name, std::vector<std::string> params,
+  FunctionDeclaration(std::string name, std::vector<Variable *> params,
                       Statement *body)
       : name(std::move(name)), params(std::move(params)), body(body) {}
   std::string toString() const override;

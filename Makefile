@@ -1,10 +1,11 @@
 CXXFLAGS=-g -MMD -std=c++17
-SRCS=eval.cpp lang.cpp
+BINS=eval cheat anticheat
+SRCS=lang.cpp $(BINS:=.cpp)
 OBJS=$(SRCS:.cpp=.o)
 DEPS=$(SRCS:.cpp=.d)
 
-all: eval
-eval: $(OBJS)
+all: $(BINS)
+$(BINS): %: %.o lang.o
 	g++ -o $@ $^
 
 .PHONY: clean

@@ -226,11 +226,11 @@ ValuePtr CallExpression::eval(Context &ctx) const {
   ctx.callStack.push({});
   for (int i = 0; i < args.size(); ++i) {
     const auto &name = funcObject->params[i];
-    if (ctx.program->index.count(name) > 0) {
+    if (ctx.program->index.count(name->name) > 0) {
       throw RuntimeError(
-          this, "Function parameter name is global identifier: " + name);
+          this, "Function parameter name is global identifier: " + name->name);
     }
-    ctx.set(name, argValues[i]);
+    ctx.set(name->name, argValues[i]);
   }
 
   try {
@@ -256,11 +256,11 @@ static std::string indent(const std::string &s) {
 }
 
 std::string SetStatement::toString() const {
-  return std::string("(set ") + name + " " + value->toString() + ")";
+  return std::string("(set ") + name->toString() + " " + value->toString() + ")";
 }
 void SetStatement::eval(Context &ctx) const {
   ctx.tick();
-  ctx.set(name, value->eval(ctx));
+  ctx.set(name->name, value->eval(ctx));
 }
 
 std::string IfStatement::toString() const {
@@ -314,7 +314,7 @@ std::string FunctionDeclaration::toString() const {
   str += name;
   for (const auto &param : params) {
     str += " ";
-    str += param;
+    str += param->toString();
   }
   str += ")\n";
   str += indent(body->toString());
@@ -446,7 +446,7 @@ Construct *scan(std::istream &is) {
     auto name = scanIdentifier(is);
     auto *value = scanT<Expression>(is);
     expectClosingParens(is);
-    return new SetStatement(name, value->as<Expression>());
+    return new SetStatement(new Variable(name), value->as<Expression>());
   } else if (type == "if") {
     auto *cond = scanT<Expression>(is);
     auto *body = scanT<Statement>(is);
@@ -478,10 +478,10 @@ Construct *scan(std::istream &is) {
       throw SyntaxError(nullptr, "Opening parenthesis expected");
     }
     auto name = scanIdentifier(is);
-    std::vector<std::string> params;
+    std::vector<Variable *> params;
     removeWhitespaces(is);
     while (is.peek() != ')') {
-      params.push_back(scanIdentifier(is));
+      params.push_back(new Variable(scanIdentifier(is)));
       removeWhitespaces(is);
     }
     expectClosingParens(is);
@@ -510,6 +510,9 @@ Program *scanProgram(std::istream &is) {
     auto *el = scan(is);
     if (el == nullptr) break;
     if (!el->is<FunctionDeclaration>()) {
+      if (el->is<Variable>() && el->as<Variable>()->name == "endprogram") {
+        break;
+      }
       throw SyntaxError(nullptr, "Invalid program element");
     }
     body.push_back(el->as<FunctionDeclaration>());

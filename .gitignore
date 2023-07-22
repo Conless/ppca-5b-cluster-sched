@@ -1,6 +1,8 @@
 *.o
 *.d
 eval
+cheat
+anticheat
 
 *.out
 *.log
