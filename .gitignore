@@ -4,6 +4,8 @@ eval
 cheat
 anticheat
 
+*-submit.cpp
+
 *.out
 *.log
 *.local

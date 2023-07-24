@@ -15,8 +15,9 @@ int main (int argc, char **argv) {
       return 2;
     }
     auto *p = scanProgram(code);
-    std::cout << p->toString();
-    p->eval(100000);
+    // std::cout << p->toString();
+    int time = p->eval(100000);
+    std::cout << "Evaluation took " << time << " ticks to complete" << std::endl;
   } catch (const EvalError &e) {
     std::cerr << e.what() << std::endl;
     return 1;

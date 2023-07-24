@@ -189,7 +189,7 @@ class Program : public Construct {
 
   Program(std::vector<FunctionDeclaration *> body);
   std::string toString() const override;
-  void eval(int timeLimit);
+  int eval(int timeLimit);
 };
 
 

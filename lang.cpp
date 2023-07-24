@@ -355,13 +355,14 @@ std::string Program::toString() const {
   }
   return str;
 }
-void Program::eval(int timeLimit) {
+int Program::eval(int timeLimit) {
   Context ctx{
       .callStack = {},
       .program = this,
       .timeLeft = timeLimit,
   };
   CallExpression("main", {}).eval(ctx);
+  return timeLimit - ctx.timeLeft;
 }
 
 static bool isValidIdentifier(const std::string &name) {
