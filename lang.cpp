@@ -66,11 +66,6 @@ struct Context {
   }
 };
 
-IntegerLiteral::IntegerLiteral(int value) : value(value) {
-  if (value < 0) {
-    throw SyntaxError(this, "Negative literal not allowed");
-  }
-}
 std::string IntegerLiteral::toString() const { return std::to_string(value); }
 ValuePtr IntegerLiteral::eval(Context &ctx) const {
   ctx.tick();
@@ -439,10 +434,28 @@ BaseObject *scan(std::istream &is) {
     // variable or literal
     auto name = scanToken(is);
     if (name.empty()) return nullptr;
+    if (name[0] == '-') {
+      bool isLiteral = true;
+      if (name.length() == 1) {
+        isLiteral = false;
+      } else {
+        for (char ch : name.substr(1)) {
+          if (!isdigit(ch)) {
+            isLiteral = false;
+            break;
+          }
+        }
+      }
+      if (isLiteral) {
+        int value = std::stoi(name);
+        return new IntegerLiteral(value);
+      }
+    }
     if (isdigit(name[0])) {
       for (char ch : name) {
-        if (!isdigit(ch))
+        if (!isdigit(ch)) {
           throw SyntaxError(nullptr, "Invalid literal: " + name);
+        }
       }
       int value = std::stoi(name);
       return new IntegerLiteral(value);
