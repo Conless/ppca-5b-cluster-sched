@@ -15,7 +15,7 @@ const std::unordered_set<std::string> builtinFunctions = {
     "scan", "print", "array.create", "array.get", "array.set", "array.scan", "array.print",
 };
 
-static bool isTruthy(const Construct *ctx, ValuePtr value) {
+static bool isTruthy(const BaseObject *ctx, ValuePtr value) {
   auto iv = std::dynamic_pointer_cast<IntValue>(value);
   if (iv == nullptr) {
     throw RuntimeError(ctx, "Type error: if condition should be an int");
@@ -32,7 +32,7 @@ ArrayValue::~ArrayValue() { delete[] contents; }
 
 struct VariableSet {
   std::unordered_map<std::string, ValuePtr> values;
-  ValuePtr getOrThrow(const Construct *ctx, const std::string &name) {
+  ValuePtr getOrThrow(const BaseObject *ctx, const std::string &name) {
     if (values.count(name) == 0) {
       throw RuntimeError(ctx, "Use of undefined variable: " + name);
     }
@@ -49,10 +49,10 @@ struct Context {
   int timeLeft;
 
   VariableSet &currentFrame() { return callStack.top(); }
-  ValuePtr getOrThrow(const Construct *ctx, const std::string &name) {
+  ValuePtr getOrThrow(const BaseObject *ctx, const std::string &name) {
     return currentFrame().getOrThrow(ctx, name);
   }
-  void set(const Construct *ctx, const std::string &name, ValuePtr value) {
+  void set(const BaseObject *ctx, const std::string &name, ValuePtr value) {
     if (program->index.count(name) > 0 || builtinFunctions.count(name) > 0) {
       throw RuntimeError(ctx, "Assigning to function " + name);
     }
@@ -431,7 +431,7 @@ static T *scanT(std::istream &is) {
   return construct->as<T>();
 }
 
-Construct *scan(std::istream &is) {
+BaseObject *scan(std::istream &is) {
   // ignore whitespaces
   removeWhitespaces(is);
   if (!is || is.peek() == EOF) return nullptr;

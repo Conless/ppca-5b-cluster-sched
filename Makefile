@@ -1,13 +1,13 @@
 CXXFLAGS=-g -MMD -std=c++17
 BINS=eval cheat anticheat
 SRCS=lang.cpp $(BINS:=.cpp)
-SUBMITFILES=$(SRCS:.cpp=-submit.cpp)
+SUBMITFILES=$(BINS:=-submit.cpp)
 OBJS=$(SRCS:.cpp=.o)
 DEPS=$(SRCS:.cpp=.d)
 
-all: $(BINS)
+all: $(BINS) $(SUBMITFILES)
 $(BINS): %: %.o lang.o
-	g++ -o $@ $^
+	$(CXX) -o $@ $^
 
 $(SUBMITFILES): %-submit.cpp: %.cpp
 	rm -f $@
@@ -16,6 +16,6 @@ $(SUBMITFILES): %-submit.cpp: %.cpp
 
 .PHONY: clean
 clean:
-	rm -f $(BINS) $(OBJS) $(DEPS) $(SUBMITFILES) eval
+	rm -f $(BINS) $(OBJS) $(DEPS) $(SUBMITFILES)
 
 -include *.d

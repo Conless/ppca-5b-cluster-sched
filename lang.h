@@ -39,9 +39,9 @@ class ArrayValue : public Value {
 class Program;
 struct Context;
 
-class Construct {
+class BaseObject {
  public:
-  virtual ~Construct() {}
+  virtual ~BaseObject() {}
   virtual std::string toString() const = 0;
 
   template <typename T>
@@ -59,7 +59,7 @@ class Construct {
 // |           Expressions              |
 // +------------------------------------+
 
-class Expression : public Construct {
+class Expression : public BaseObject {
  public:
   virtual ValuePtr eval(Context &ctx) const = 0;
 };
@@ -98,7 +98,7 @@ class CallExpression : public Expression {
 // |           Statements               |
 // +------------------------------------+
 
-class Statement : public Construct {
+class Statement : public BaseObject {
  public:
   virtual void eval(Context &ctx) const = 0;
 };
@@ -170,7 +170,7 @@ class ReturnStatement : public Statement {
 // |        Global Constructs           |
 // +------------------------------------+
 
-class FunctionDeclaration : public Construct {
+class FunctionDeclaration : public BaseObject {
  public:
   std::string name;
   std::vector<Variable *> params;
@@ -182,7 +182,7 @@ class FunctionDeclaration : public Construct {
   std::string toString() const override;
 };
 
-class Program : public Construct {
+class Program : public BaseObject {
  public:
   std::vector<FunctionDeclaration *> body;
   std::unordered_map<std::string, FunctionDeclaration *> index;
@@ -199,10 +199,10 @@ class Program : public Construct {
 
 class EvalError : public std::exception {
  public:
-  const Construct *location;
+  const BaseObject *location;
   std::string reason;
 
-  EvalError(const Construct *location, const std::string &reason_)
+  EvalError(const BaseObject *location, const std::string &reason_)
       : location(location) {
     if (location == nullptr) {
       reason = reason_;
@@ -214,12 +214,12 @@ class EvalError : public std::exception {
 };
 class SyntaxError : public EvalError {
  public:
-  SyntaxError(const Construct *location, const std::string &reason)
+  SyntaxError(const BaseObject *location, const std::string &reason)
       : EvalError(location, "Syntax error: " + reason) {}
 };
 class RuntimeError : public EvalError {
  public:
-  RuntimeError(const Construct *location, const std::string &reason)
+  RuntimeError(const BaseObject *location, const std::string &reason)
       : EvalError(location, "Runtime error: " + reason) {}
 };
 
@@ -228,5 +228,5 @@ class RuntimeError : public EvalError {
 // |               Parser               |
 // +------------------------------------+
 
-Construct *scan(std::istream &is);
+BaseObject *scan(std::istream &is);
 Program *scanProgram(std::istream &is);
