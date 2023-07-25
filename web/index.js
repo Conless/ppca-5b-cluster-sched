@@ -1,15 +1,16 @@
+import cors from '@koa/cors'
 import Router from '@koa/router'
 import Nedb from '@seald-io/nedb'
 import * as argon2 from 'argon2'
 import S3 from 'aws-sdk/clients/s3.js'
 import { config } from 'dotenv'
-import * as jwt from 'jsonwebtoken'
+import { default as jwt } from 'jsonwebtoken'
 import Koa from 'koa'
 import { koaBody } from 'koa-body'
 import { v4 as uuid } from 'uuid'
 import logger from 'koa-logger'
 import fetch from 'node-fetch'
-// import serve from 'koa-static'
+import serve from 'koa-static'
 
 config()
 
@@ -39,8 +40,9 @@ const db = new Nedb({ filename: 'data.db', autoload: true })
   }
 }
 
-app.use(logger()).use(koaBody({ json: true }))
+app.use(logger()).use(cors()).use(koaBody({ json: true }))
 app.use(router.routes()).use(router.allowedMethods())
+app.use(serve('../app/dist'))
 app.listen(Number(process.env.PORT))
 
 router.post('/user', async ctx => {
@@ -52,7 +54,7 @@ router.post('/user', async ctx => {
   if ((await db.findAsync({ is: 'user', id }).execAsync()).length > 0) {
     ctx.throw(409)
   }
-  await db.insertAsync({ is: 'user', id, name, password: argon2.hash(password) })
+  await db.insertAsync({ is: 'user', id, name, password: await argon2.hash(password) })
   for (const type of [ 'cheat', 'anticheat' ]) {
     await db.insertAsync({ is: 'code', user: id, type, id: null })
   }
@@ -67,14 +69,14 @@ router.post('/token', async ctx => {
   }
   const user = await db.findOneAsync({ is: 'user', id }).execAsync()
   if (!user) ctx.throw(404)
-  if (!argon2.verify(user.password, password)) ctx.throw(401)
+  if (!await argon2.verify(user.password, password)) ctx.throw(401)
   ctx.body = jwt.sign({ sub: id, exp: Math.floor(Date.now() / 1000) + 86400 }, secret)
 })
 
 /** @type {Koa.Middleware} */
 const auth = async (ctx, next) => {
-  ctx.state.user = 'xxx'
-  return await next()
+  // ctx.state.user = 'xxx'
+  // return await next()
   const auth = ctx.header.authorization
   if (!auth) ctx.throw(401)
   try {
@@ -125,21 +127,20 @@ class CompileRequest {
   artifact
 }
 
-const s3c = {
-  buckets: {
+const s3c = (() => {
+  const buckets = {
     usercontent: '5buc',
     testcases: '5bt',
-  },
-  checker: {
-    ac: new SourceLocation(s3c.bucket.testcases, 'ac'),
-    checkAns: new SourceLocation(s3c.bucket.testcases, 'checkans'),
-    normalize: new SourceLocation(s3c.bucket.testcases, 'normalize'),
-  },
-}
-
-router.get('/scoreboard', auth, async ctx => {
-  // TODO
-})
+  }
+  return {
+    buckets,
+    checker: {
+      ac: new SourceLocation(buckets.testcases, 'ac'),
+      checkAns: new SourceLocation(buckets.testcases, 'checkans'),
+      normalize: new SourceLocation(buckets.testcases, 'normalize'),
+    },
+  }
+})()
 
 router.get('/code/:type(cheat|anticheat)', auth, async ctx => {
   const { type } = ctx.params
@@ -152,9 +153,33 @@ router.get('/code/:type(cheat|anticheat)', auth, async ctx => {
   }
   ctx.redirect(await s3.getSignedUrlPromise('getObject', {
     Bucket: s3c.buckets.usercontent,
-    Key: code.id,
+    Key: `${user}/${code.id}.cpp`,
     Expires: 60,
   }))
+})
+
+router.get('/code/get/:id', auth, async ctx => {
+  const { id } = ctx.params
+  const { user } = ctx.state
+  const code = await db.findOneAsync({ is: 'code', id, user }).execAsync()
+  if (!code) ctx.throw(404)
+  ctx.redirect(await s3.getSignedUrlPromise('getObject', {
+    Bucket: s3c.buckets.usercontent,
+    Key: `${user}/${id}.cpp`,
+    Expires: 60,
+  }))
+})
+
+router.get('/code/versions', auth, async ctx => {
+  const { user } = ctx.state
+  const versions = await db.findAsync({ is: 'version', user })
+  versions.sort((a, b) => b.time - a.time)
+  versions.forEach(x => {
+    delete x._id
+    delete x.is
+    delete x.user
+  })
+  ctx.body = versions
 })
 
 router.get('/code/upload', auth, async ctx => {
@@ -170,13 +195,15 @@ router.get('/code/upload', auth, async ctx => {
 })
 
 router.put('/code/:type(cheat|anticheat)/:id', auth, async ctx => {
-  const { type, id: postfixId } = ctx.params
+  const { type, id } = ctx.params
   const { user } = ctx.state
-  const id = `${user}/${postfixId}`
+  const exists = await db.findOneAsync({ is: 'version', id })
+  if (exists) ctx.throw(409)
+  const base = `${user}/${id}`
   try {
-    const head = await s3.headObject({ Bucket: s3c.buckets.usercontent, Key: id + '.cpp' }).promise()
+    const head = await s3.headObject({ Bucket: s3c.buckets.usercontent, Key: base + '.cpp' }).promise()
     if (head.ContentLength > 4 * 1024 * 1024) {
-      await s3.deleteObject({ Bucket: s3c.buckets.usercontent, Key: id + '.cpp' }).promise()
+      await s3.deleteObject({ Bucket: s3c.buckets.usercontent, Key: base + '.cpp' }).promise()
       ctx.throw(400)
     }
   } catch (e) {
@@ -189,12 +216,12 @@ router.put('/code/:type(cheat|anticheat)/:id', auth, async ctx => {
 })
 
 const callScheduler = async (path, req) =>
-  await (await fetch(new URL(path, schedulerBase), { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req) })).json()
+  await (await fetch(new URL(path, schedulerBase), { method: 'post', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req) })).json()
 const compile = async id => {
   const req = new CompileRequest()
   req.artifact = new SourceLocation(s3c.buckets.usercontent, id)
   req.source = new SourceLocation(s3c.buckets.usercontent, id + '.cpp')
-  const res = await callScheduler('/compile', id)
+  const res = await callScheduler('/compile', req)
   if (res.result !== 'compiled') throw new Error(res.message)
 }
 
@@ -210,11 +237,73 @@ const state = await (async () => {
 })()
 const updateState = async () => {
   await db.updateAsync({ is: 'state' }, { $set: { state } })
-  // TODO: calculate scoreboard
+  updateScoreboard()
 }
 
+const scoreboard = {
+  cheat: [],
+  anticheat: [],
+}
+const updateScoreboard = async () => {
+  // cheat
+  scoreboard.cheat = Object.entries(state.cheat)
+    .map(([ user, { id, result } ]) => {
+      const scores = Object.values(result)
+        .flatMap(x => x.testpoints)
+        .filter(x => x.code[0] === x.code[1])
+        .map(x => 1 - x.score)
+      const score = scores.reduce((x, y) => x + y, 0) / scores.length
+      console.log(user, id, scores, score)
+      if (Number.isNaN(score)) return null
+      return { user, id, score }
+    }).filter(Boolean)
+    .sort((a, b) => b.score - a.score)
+  scoreboard.anticheat = Object.entries(state.anticheat)
+    .map(([ user, { id, result } ]) => {
+      const scores = Object.values(result)
+        .flatMap(x => x.testpoints)
+        .map(x => {
+          const expect = x.code[0] === x.code[1] ? 1 : -1
+          const score = expect * (x.score * 2 - 1)
+          return score
+        })
+      const score = scores.reduce((x, y) => x + y, 0) / scores.length
+      if (Number.isNaN(score)) return null
+      return { user, id, score }
+    }).filter(Boolean)
+    .sort((a, b) => b.score - a.score)
+  await Promise.all([ ...scoreboard.cheat, ...scoreboard.anticheat ].map(async x => {
+    const user = await db.findOneAsync({ is: 'user', id: x.user })
+    if (!user) {
+      x.name = 'Unknown'
+    } else {
+      x.name = user.name
+    }
+  }))
+}
+await updateScoreboard()
+
+router.get('/state', auth, async ctx => {
+  if (ctx.state.user !== 'xxx') return
+  ctx.body = state
+})
+
+router.get('/scoreboard', auth, async ctx => {
+  const users = {}
+  for (const k in scoreboard) {
+    for (const { user, name, score } of scoreboard[k]) {
+      if (!users[user]) users[user] = { user, name }
+      users[user][k] = score
+    }
+  }
+  const rank = Object.values(users)
+    .map(({ user, name, cheat, anticheat }) => ({ name, isCurrent: user === ctx.state.user, cheat, anticheat, total: Math.max(cheat || 0, 0) + Math.max(anticheat || 0, 0) }))
+    .sort((a, b) => b.total - a.total)
+  ctx.body = rank
+})
+
 const nTestcases = 4
-const normalizeScore = score => Math.min(Math.max(score, 1), 0)
+const normalizeScore = score => Math.max(Math.min(score, 1), 0)
 
 const judgeCheat = async ({ user, id }) => {
   const base = `${user}/${id}`
@@ -347,6 +436,8 @@ const judgeWorker = async () => {
       await compile(base)
     } catch (e) {
       await updateStatus('compile_error', String(e))
+      await db.updateAsync({ is: 'queue' }, { $pop: { queue: -1 } })
+      continue
     }
 
     await updateStatus('judging')
@@ -356,10 +447,10 @@ const judgeWorker = async () => {
       } else {
         await judgeAnticheat({ user, id })
       }
+      await updateStatus('done')
     } catch (e) {
       await updateStatus('error', String(e))
     }
-    await updateStatus('done')
     await db.updateAsync({ is: 'queue' }, { $pop: { queue: -1 } })
   }
 }

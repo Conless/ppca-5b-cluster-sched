@@ -11,7 +11,7 @@ all: $(BINS) $(SUBMITFILES)
 $(BINS): %: %.o lang.o
 	$(CXX) -o $@ $^
 
-$(SUBMITFILES): %-submit.cpp: %.cpp
+$(SUBMITFILES): %-submit.cpp: %.cpp %
 	rm -f $@
 	echo '#include <bits/stdc++.h>' > $@
 	cpp -imacros bits/stdc++.h -include lang.cpp $< | sed -E 's/^#.+$$//;/^\s*$$/d' >> $@

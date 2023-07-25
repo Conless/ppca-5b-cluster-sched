@@ -10,7 +10,7 @@ int main () {
   std::cout << scanProgram(userp)->toString() << "endprogram\n";
   int c;
   while ((c = getchar()) != EOF) {
-    std::cout << c;
+    std::cout << (char) c;
   }
   return 0;
 }
