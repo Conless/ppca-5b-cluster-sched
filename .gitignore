@@ -6,6 +6,10 @@ anticheat
 checkans
 normalize
 
+# baseline cheater
+cheat-baseline1-spin-and-swap
+cheat-baseline1-dead-code
+
 *-submit.cpp
 
 *.out
