@@ -9,8 +9,9 @@ normalize
 # baseline cheater
 cheat-baseline1-spin-and-swap
 cheat-baseline1-dead-code
+anticheat-baseline1-detect-cfg-sim
 
-*-submit.cpp
+*-submit*
 
 *.out
 *.log

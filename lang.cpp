@@ -15,7 +15,7 @@ const std::unordered_set<std::string> builtinFunctions = {
     "scan", "print", "array.create", "array.get", "array.set", "array.scan", "array.print",
 };
 
-static bool isTruthy(const BaseObject *ctx, ValuePtr value) {
+bool isTruthy(const BaseObject *ctx, ValuePtr value) {
   auto iv = std::dynamic_pointer_cast<IntValue>(value);
   if (iv == nullptr) {
     throw RuntimeError(ctx, "Type error: if condition should be an int");
@@ -253,7 +253,7 @@ ValuePtr CallExpression::eval(Context &ctx) const {
   return std::make_shared<IntValue>(0);
 }
 
-static std::string indent(const std::string &s) {
+std::string indent(const std::string &s) {
   std::string res = "  ";
   for (char ch : s) {
     res += ch;
@@ -364,7 +364,7 @@ int Program::eval(int timeLimit, std::istream &is, std::ostream &os) {
   return timeLimit - ctx.timeLeft;
 }
 
-static bool isValidIdentifier(const std::string &name) {
+bool isValidIdentifier(const std::string &name) {
   if (name.length() > kIdMaxLength) return false;
   if (name.empty()) return false;
   if (isdigit(name[0])) return false;
@@ -376,7 +376,7 @@ static bool isValidIdentifier(const std::string &name) {
   return true;
 }
 
-static void removeWhitespaces(std::istream &is) {
+void removeWhitespaces(std::istream &is) {
   while (is && isspace(is.peek())) is.get();
   if (is.peek() == ';') {
     int ch;
@@ -387,7 +387,7 @@ static void removeWhitespaces(std::istream &is) {
   }
 }
 
-static void expectClosingParens(std::istream &is) {
+void expectClosingParens(std::istream &is) {
   removeWhitespaces(is);
   int ch = is.get();
   if (ch != ')') {
@@ -396,7 +396,7 @@ static void expectClosingParens(std::istream &is) {
   }
 }
 
-static std::string scanToken(std::istream &is) {
+std::string scanToken(std::istream &is) {
   removeWhitespaces(is);
   std::string token;
   for (int next = is.peek(); !isspace(next) && next != ')' && next != ';';
@@ -406,7 +406,7 @@ static std::string scanToken(std::istream &is) {
   return token;
 }
 
-static std::string scanIdentifier(std::istream &is) {
+std::string scanIdentifier(std::istream &is) {
   auto name = scanToken(is);
   if (!isValidIdentifier(name))
     throw SyntaxError(nullptr, "Invalid identifier: " + name);

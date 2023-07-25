@@ -1,7 +1,8 @@
 CXXFLAGS=-g -MMD -std=c++17
 BINS=eval cheat anticheat checkans normalize \
     cheat-baseline1-spin-and-swap \
-	cheat-baseline1-dead-code
+	cheat-baseline1-dead-code \
+	anticheat-baseline1-detect-cfg-sim
 SRCS=lang.cpp $(BINS:=.cpp)
 SUBMITFILES=$(BINS:=-submit.cpp)
 OBJS=$(SRCS:.cpp=.o)

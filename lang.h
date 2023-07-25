@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 // +------------------------------------+
@@ -230,3 +231,19 @@ class RuntimeError : public EvalError {
 
 BaseObject *scan(std::istream &is);
 Program *scanProgram(std::istream &is);
+
+// +------------------------------------+
+// |   Variables and Helper Functions   |
+// +------------------------------------+
+
+extern const int kIdMaxLength;
+extern const std::unordered_set<std::string> keywords;
+extern const std::unordered_set<std::string> builtinFunctions;
+
+bool isTruthy(const BaseObject *ctx, ValuePtr value);
+std::string indent(const std::string &s);
+bool isValidIdentifier(const std::string &name);
+void removeWhitespaces(std::istream &is);
+void expectClosingParens(std::istream &is);
+std::string scanToken(std::istream &is);
+std::string scanIdentifier(std::istream &is);
