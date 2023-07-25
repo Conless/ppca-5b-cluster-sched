@@ -10,6 +10,12 @@ const std::unordered_set<std::string> importantBuiltinFunctions = {
   "array.create", "array.get", "array.set", "array.scan", "array.print",
 };
 
+double compress(double x) {
+    if (x < 0.0001) return 0;
+    if (x > 0.9999) return 1;
+    return x;
+}
+
 double DifferenceMetrics(double a, double b) {
     if (a == 0 && b == 0) {
         return 0;
@@ -24,7 +30,7 @@ class CFG {
     dfs(entry);
   }
 
-  double evaluate(CFG& other) {
+  double evaluate(const CFG& other) const {
     double simOnBackEdges = 1 - DifferenceMetrics(backEdgeCount, other.backEdgeCount);
     double simOnForwardEdges = 1 - DifferenceMetrics(forwardEdgeCount, other.forwardEdgeCount);
     return std::sqrt(simOnBackEdges * simOnBackEdges);
@@ -158,48 +164,86 @@ class CFG {
   int forwardEdgeCount = 0;
 };
 
-class ImportantFunctionsCount : public Visitor<int> {
+struct Count {
+  int arrayCreate = 0;
+  int arrayGet = 0;
+  int arraySet = 0;
+  int arrayScan = 0;
+  int arrayPrint = 0;
+
+  Count& operator+=(const Count& other) {
+    arrayCreate += other.arrayCreate;
+    arrayGet += other.arrayGet;
+    arraySet += other.arraySet;
+    arrayScan += other.arrayScan;
+    arrayPrint += other.arrayPrint;
+    return *this;
+  }
+  Count operator+(const Count& other) const {
+    Count result = *this;
+    result += other;
+    return result;
+  }
+  double evaluate(const Count& other) const {
+    double simOnArrayCreate = 1 - DifferenceMetrics(arrayCreate, other.arrayCreate);
+    double simOnArrayGet = 1 - DifferenceMetrics(arrayGet, other.arrayGet);
+    double simOnArraySet = 1 - DifferenceMetrics(arraySet, other.arraySet);
+    double simOnArrayScan = 1 - DifferenceMetrics(arrayScan, other.arrayScan);
+    double simOnArrayPrint = 1 - DifferenceMetrics(arrayPrint, other.arrayPrint);
+    return std::pow(simOnArrayCreate * simOnArrayGet * simOnArraySet * simOnArrayScan * simOnArrayPrint, 1.0 / 5);
+  }
+};
+
+class ImportantFunctionsCount : public Visitor<Count> {
  public:
-  int visitProgram(Program *node) override {
-    int l = 0;
+  Count visitProgram(Program *node) override {
+    Count l;
     for (auto func : node->body) {
       l += visitFunctionDeclaration(func);
     }
     return l;
   }
-  int visitFunctionDeclaration(FunctionDeclaration *node) override {
+  Count visitFunctionDeclaration(FunctionDeclaration *node) override {
     return visitStatement(node->body);
   }
-  int visitExpressionStatement(ExpressionStatement *node) override {
+  Count visitExpressionStatement(ExpressionStatement *node) override {
     return visitExpression(node->expr);
   }
-  int visitSetStatement(SetStatement *node) override {
+  Count visitSetStatement(SetStatement *node) override {
     return visitExpression(node->value);
   }
-  int visitIfStatement(IfStatement *node) override {
+  Count visitIfStatement(IfStatement *node) override {
     return visitExpression(node->condition) + visitStatement(node->body);
   }
-  int visitForStatement(ForStatement *node) override {
+  Count visitForStatement(ForStatement *node) override {
     return visitStatement(node->body) + visitExpression(node->test) + visitStatement(node->update) + visitStatement(node->body);
   }
-  int visitBlockStatement(BlockStatement *node) override {
-    int l = 0;
+  Count visitBlockStatement(BlockStatement *node) override {
+    Count l;
     for (auto stmt : node->body) {
       l += visitStatement(stmt);
     }
     return l;
   }
-  int visitReturnStatement(ReturnStatement *node) override { return 0; }
+  Count visitReturnStatement(ReturnStatement *node) override { return Count(); }
 
-  int visitIntegerLiteral(IntegerLiteral *node) override { return 0; }
-  int visitVariable(Variable *node) override { return 0; }
-  int visitCallExpression(CallExpression *node) override {
-    int l = 0;
+  Count visitIntegerLiteral(IntegerLiteral *node) override { return Count(); }
+  Count visitVariable(Variable *node) override { return Count(); }
+  Count visitCallExpression(CallExpression *node) override {
+    Count l;
     for (auto expr : node->args) {
       l += visitExpression(expr);
     }
-    if (importantBuiltinFunctions.count(node->func) > 0) {
-      l++;
+    if (node->func == "array.create") {
+      ++l.arrayCreate;
+    } else if (node->func == "array.get") {
+      ++l.arrayGet;
+    } else if (node->func == "array.set") {
+      ++l.arraySet;
+    } else if (node->func == "array.scan") {
+      ++l.arrayScan;
+    } else if (node->func == "array.print") {
+      ++l.arrayPrint;
     }
     return l;
   }
@@ -210,8 +254,11 @@ int main() {
   auto* pgm2 = scanProgram(std::cin);
   CFG cfg1(pgm1);
   CFG cfg2(pgm2);
-  ImportantFunctionsCount ifc1;
+  ImportantFunctionsCount ifc;
+  Count count1 = ifc.visitProgram(pgm1);
+  Count count2 = ifc.visitProgram(pgm2);
   auto m1 = cfg1.evaluate(cfg2);
-  std::cout << m1 * m1 << std::endl;
+  auto m2 = count1.evaluate(count2);
+  std::cout << compress(m1 * m1 + 0.4 * m2) << std::endl;
   return 0;
 }
