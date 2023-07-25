@@ -1,6 +1,7 @@
 <template>
   <main>
     <slot />
+    <NuxtLink to="/logout">退出</NuxtLink>
   </main>
 </template>
 

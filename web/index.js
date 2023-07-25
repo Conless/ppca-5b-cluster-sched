@@ -93,8 +93,10 @@ const auth = async (ctx, next) => {
 router.put('/name', auth, async ctx => {
   if (!ctx.request.body) ctx.throw(400)
   const { name } = ctx.request.body
+  const { user } = ctx.state
   if (typeof name !== 'string' || !name || name.length > 42) ctx.throw(400)
-  await db.updateAsync({ is: 'user', id }, { $set: { name } })
+  await db.updateAsync({ is: 'user', id: user }, { $set: { name } })
+  await updateScoreboard()
   ctx.status = 204
 })
 
@@ -194,9 +196,18 @@ router.get('/code/upload', auth, async ctx => {
   }
 })
 
+const minInterval = 5 * 60 * 1000
+
 router.put('/code/:type(cheat|anticheat)/:id', auth, async ctx => {
   const { type, id } = ctx.params
   const { user } = ctx.state
+  const current = await db.findOneAsync({ is: 'code', type, user })
+  if (!current) ctx.throw(401)
+  if (current.time && Date.now() - current.time <= minInterval) {
+    ctx.status = 429
+    ctx.body = Number(current.time) + minInterval
+    return
+  }
   const exists = await db.findOneAsync({ is: 'version', id })
   if (exists) ctx.throw(409)
   const base = `${user}/${id}`
@@ -210,7 +221,7 @@ router.put('/code/:type(cheat|anticheat)/:id', auth, async ctx => {
     if (e.code === 'NotFound') ctx.throw(404)
   }
   await db.insertAsync({ is: 'version', time: new Date(), type, id, user, status: 'pending' })
-  await db.updateAsync({ is: 'code', type, user }, { $set: { id } })
+  await db.updateAsync({ is: 'code', type, user }, { $set: { id, time: new Date() } })
   await db.updateAsync({ is: 'queue' }, { $push: { queue: { type, user, id } } })
   ctx.status = 204
 })
@@ -253,7 +264,6 @@ const updateScoreboard = async () => {
         .filter(x => x.code[0] === x.code[1])
         .map(x => 1 - x.score)
       const score = scores.reduce((x, y) => x + y, 0) / scores.length
-      console.log(user, id, scores, score)
       if (Number.isNaN(score)) return null
       return { user, id, score }
     }).filter(Boolean)
@@ -284,7 +294,7 @@ const updateScoreboard = async () => {
 await updateScoreboard()
 
 router.get('/state', auth, async ctx => {
-  if (ctx.state.user !== 'xxx') return
+  if (!ctx.state.user.startsWith('521')) return
   ctx.body = state
 })
 
@@ -436,6 +446,7 @@ const judgeWorker = async () => {
       await compile(base)
     } catch (e) {
       await updateStatus('compile_error', String(e))
+      await db.updateAsync({ is: 'code', type, user, id }, { $set: { time: null } })
       await db.updateAsync({ is: 'queue' }, { $pop: { queue: -1 } })
       continue
     }

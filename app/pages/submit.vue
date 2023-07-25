@@ -3,19 +3,34 @@
     <Nav />
     <form @submit.prevent="submit">
       <p>
-        <select v-model="type">
+        <label for="type">题目：</label>
+        <select id="type" v-model="type">
           <option value="cheat">抄袭</option>
           <option value="anticheat">查重</option>
         </select>
         <button @click.prevent="load">加载上一次提交</button>
       </p>
       <p><textarea v-model="code"></textarea></p>
-      <p><button type="submit" :disabled="inProgress">提交</button></p>
+      <p>此题评测时间较长，<strong>5 分钟内同一题目 (抄袭/查重) 只可提交一次</strong>。(若代码产生编译错误，则不计入时限，可以直接重新提交。)</p>
+      <p class="submit-line"><button type="submit" class="submit" :disabled="inProgress">提交</button></p>
     </form>
   </div>
 </template>
 
 <style scoped>
+.submit-line {
+  text-align: right;
+}
+.submit {
+  color: #3c4cf2 !important;
+  opacity: 1 !important;
+  border: 1px solid #777;
+  margin-right: 0;
+  padding: 4px 8px;
+}
+p {
+  text-align: justify;
+}
 select {
   padding: 0 12px 0 4px;
   margin-right: 12px;
@@ -48,20 +63,27 @@ textarea:focus {
   textarea:focus {
     border-color: #ccc;
   }
+  .submit {
+    color: #3391ff !important;
+    border: 1px solid #777;
+  }
 }
 </style>
 
 <script setup>
 import { request } from '~/lib/fetch'
 
-const type = ref('cheat')
+const type = ref('')
 const code = ref('')
 const inProgress = ref(false)
 const router = useRouter()
 
 const load = async () => {
   const resp = await request(`/code/${type.value}`)
-  if (!resp) return
+  if (!resp) {
+    code.value = ''
+    return
+  }
   code.value = await resp.text()
 }
 
@@ -69,6 +91,11 @@ const submit = async () => {
   inProgress.value = true
 
   try {
+    if (!type.value) {
+      alert('请选择要提交的题目')
+      return
+    }
+
     if (code.value.length === 0) {
       alert('请输入代码')
       return
@@ -79,6 +106,8 @@ const submit = async () => {
       return
     }
 
+    if (!confirm('确定要提交吗？5 分钟内无法再次提交同一题的代码。(编译错误的代码不计时间；不同题目仍可提交。)')) return
+
     const { id, url } = await (await request('/code/upload')).json()
     const uploadRes = await fetch(url, { method: 'put', body: code.value })
     if (uploadRes.status >= 400) {
@@ -87,7 +116,7 @@ const submit = async () => {
     }
     await request(`/code/${type.value}/${id}`, { method: 'put' })
     alert('提交成功')
-    router.push('/')
+    router.push('/versions')
   } catch (e) {
     console.error(e)
   } finally {

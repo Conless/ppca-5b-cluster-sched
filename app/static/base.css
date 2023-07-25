@@ -103,7 +103,7 @@ button, .button {
   margin: -0.25em;
   transition: 0.5s ease background-color;
   border-radius: 4px;
-  color: inherit;
+  color: inherit !important;
   opacity: 0.6;
   text-decoration: none !important;
   word-wrap: normal;
@@ -149,7 +149,7 @@ input:focus, textarea:focus, select:focus {
   blockquote::before { color: rgba(127, 127, 255, .6); }
   a { color: #3391ff; }
   a:visited { color: #cc91ff; }
-  input, textarea {
+  input, textarea, select {
     background-color: #121212;
     border-bottom: 1px solid #666;
   }
@@ -214,7 +214,8 @@ aside ol a.hl {
 @media (min-width: 1080px) {
   main {
     display: block;
-    margin-left: 64px;
+    margin-left: 80px;
+    margin-left: calc(0.35 * (100vw - 640px));
     max-width: 640px;
   }
   .container {
@@ -246,7 +247,7 @@ aside ol a.hl {
 @media (min-width: 1500px) {
   main {
     display: block;
-    margin-left: 194px;
+    margin: auto;
     max-width: 720px;
   }
   aside ol {

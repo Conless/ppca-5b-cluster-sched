@@ -7,6 +7,7 @@
       <p><label for="username">学号</label> <input id="username" v-model="username" required minlength="12" maxlength="12" pattern="\d{12}"></p>
       <p><label for="nickname">昵称</label> <input id="nickname" v-model="nickname" required minlength="2" maxlength="42"></p>
       <p><label for="password">密码</label> <input id="password" v-model="password" required type="password" minlength="8"></p>
+      <p><label for="password">确认密码</label> <input id="password" v-model="password2" required type="password" minlength="8"></p>
       <p>
         <button type="submit">注册</button>
         <span><NuxtLink class="button" to="/login">转到登录</NuxtLink></span>
@@ -27,9 +28,14 @@ import { base } from '~/lib/fetch'
 const username = ref('')
 const nickname = ref('')
 const password = ref('')
+const password2 = ref('')
 const router = useRouter()
 
 const signUp = async () => {
+  if (password.value != password2.value) {
+    alert('密码与确认密码不匹配，请重新输入')
+    return
+  }
   const resp = await fetch(new URL('/user', base), {
     method: 'post',
     headers: {

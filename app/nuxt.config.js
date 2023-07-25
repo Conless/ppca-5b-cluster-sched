@@ -8,7 +8,7 @@ export default defineNuxtConfig({
   // Global page headers: https://go.nuxtjs.dev/config-head
   app: {
     head: {
-      title: 'app',
+      title: '作弊与查重',
       htmlAttrs: {
         lang: 'zh-CN'
       },

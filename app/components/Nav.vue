@@ -27,6 +27,7 @@ const routes = {
   '/': '排名',
   '/submit': '提交代码',
   '/versions': '提交记录',
+  '/profile': '修改昵称',
 }
 const keys = Object.keys(routes).filter(x => x != route)
 </script>
