@@ -1,7 +1,7 @@
 #pragma once
 
 #include <exception>
-#include <istream>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -189,7 +189,7 @@ class Program : public BaseObject {
 
   Program(std::vector<FunctionDeclaration *> body);
   std::string toString() const override;
-  int eval(int timeLimit);
+  int eval(int timeLimit, std::istream &is = std::cin, std::ostream &os = std::cout);
 };
 
 

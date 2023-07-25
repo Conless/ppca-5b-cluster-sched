@@ -1,5 +1,5 @@
 CXXFLAGS=-g -MMD -std=c++17
-BINS=eval cheat anticheat
+BINS=eval cheat anticheat checkans normalize
 SRCS=lang.cpp $(BINS:=.cpp)
 SUBMITFILES=$(BINS:=-submit.cpp)
 OBJS=$(SRCS:.cpp=.o)

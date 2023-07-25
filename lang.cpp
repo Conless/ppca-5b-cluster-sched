@@ -44,6 +44,8 @@ struct VariableSet {
 };
 
 struct Context {
+  std::istream &is;
+  std::ostream &os;
   std::stack<VariableSet> callStack;
   Program *program;
   int timeLeft;
@@ -176,11 +178,11 @@ ValuePtr CallExpression::eval(Context &ctx) const {
   } else if (func == "scan") {
     requireArity(0);
     int x;
-    std::cin >> x;
+    ctx.is >> x;
     return std::make_shared<IntValue>(x);
   } else if (func == "print") {
     requireArity(1);
-    std::cout << readInt(0) << '\n';
+    ctx.os << readInt(0) << '\n';
     return std::make_shared<IntValue>(0);
   } else if (func == "array.create") {
     requireArity(1);
@@ -190,7 +192,7 @@ ValuePtr CallExpression::eval(Context &ctx) const {
     int length = readInt(0);
     auto array = std::make_shared<ArrayValue>(length);
     for (int i = 0; i < length; ++i) {
-      std::cin >> array->contents[i];
+      ctx.is >> array->contents[i];
     }
     return array;
   } else if (func == "array.print") {
@@ -199,7 +201,7 @@ ValuePtr CallExpression::eval(Context &ctx) const {
     if (!array)
       throw RuntimeError(this, "Type error at array.get: array expected");
     for (int i = 0; i < array->length; ++i) {
-      std::cout << array->contents[i] << std::endl;
+      ctx.os << array->contents[i] << std::endl;
     }
     return std::make_shared<IntValue>(0);
   } else if (func == "array.get") {
@@ -350,8 +352,10 @@ std::string Program::toString() const {
   }
   return str;
 }
-int Program::eval(int timeLimit) {
+int Program::eval(int timeLimit, std::istream &is, std::ostream &os) {
   Context ctx{
+      .is = is,
+      .os = os,
       .callStack = {},
       .program = this,
       .timeLeft = timeLimit,
