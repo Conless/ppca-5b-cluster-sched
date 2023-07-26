@@ -478,7 +478,6 @@ Program* eliminateDeadCode(Program* origin) {
 int main() {
   auto* pgm1 = eliminateDeadCode(scanProgram(std::cin));
   auto* pgm2 = eliminateDeadCode(scanProgram(std::cin));
-  std::cout << pgm2->toString() << std::endl;
   CFG cfg1(pgm1);
   CFG cfg2(pgm2);
   ImportantFunctionsCount ifc;
@@ -486,6 +485,6 @@ int main() {
   Count count2 = ifc.visitProgram(pgm2);
   auto m1 = cfg1.evaluate(cfg2);
   auto m2 = count1.evaluate(count2);
-  std::cout << compress(m1 * m1 + 0.4 * m2) << std::endl;
+  std::cout << compress(1.5 * m1 * m1 + 0.4 * m2 - 0.3) << std::endl;
   return 0;
 }
