@@ -1,0 +1,322 @@
+diff --git a/scheduler2/config.py b/scheduler2/config.py
+index 979f970..ab7fc38 100644
+--- a/scheduler2/config.py
++++ b/scheduler2/config.py
+@@ -50,10 +50,10 @@ default_compile_limits = ResourceUsage(
+ )
+ 
+ default_run_limits = ResourceUsage(
+-    time_msecs=1 * Secs,
++    time_msecs=0.5 * Secs,
+     memory_bytes=512 * MiB,
+     file_count=unlimited,
+-    file_size_bytes=0,
++    file_size_bytes=unlimited,
+ )
+ 
+ default_check_limits = ResourceUsage(
+@@ -66,6 +66,6 @@ default_check_limits = ResourceUsage(
+ task_timeout_secs = 3600 # 1 hour
+ task_retries = 3
+ task_retry_interval_secs = 10
+-task_concurrency_per_account = 4
++task_concurrency_per_account = 6
+ 
+ runner_heartbeat_interval_secs = 2.0
+diff --git a/scheduler2/main.py b/scheduler2/main.py
+index 41265ab..b8449bc 100644
+--- a/scheduler2/main.py
++++ b/scheduler2/main.py
+@@ -1,208 +1,106 @@
+ __import__('scheduler2.logging_')
+ 
+-from asyncio import CancelledError, Future, Task, create_task, shield, wait
+ from atexit import register
+ from dataclasses import asdict
+-from http.client import BAD_REQUEST
+ from logging import getLogger
+-from time import time
+-from typing import Dict, Optional, Set, Tuple
+-from urllib.parse import quote
+ 
+-from aiohttp.web import (Application, HTTPNotFound, Request, Response,
+-                         RouteTableDef, json_response, run_app)
+-from botocore.exceptions import ClientError
+-
+-from commons.task_typing import (CodeLanguage, ProblemJudgeResult,
+-                                 SourceLocation)
+-from commons.util import deserialize, dump_dataclass, format_exc, serialize
+-from scheduler2.config import (host, port, runner_heartbeat_interval_secs,
+-                               s3_buckets)
+-from scheduler2.monitor import get_runner_status
+-from scheduler2.plan import (InvalidCodeException, InvalidProblemException,
+-                             execute_plan, generate_plan, get_partial_result)
+-from scheduler2.s3 import read_file, upload_str
+-from scheduler2.util import make_request
++from aiohttp.web import (Application, Request, RouteTableDef, json_response,
++                         run_app)
++from commons.task_typing import (Artifact, CompileSourceCpp, CompileTask, DirectChecker,
++                                 JudgeResult, JudgeTask, RunArgs,
++                                 SourceLocation, SpjChecker, Testpoint)
++from commons.util import format_exc
++from scheduler2.config import (default_check_limits, default_compile_limits,
++                               default_run_limits, host, port)
++from scheduler2.dispatch import run_task
++from scheduler2.s3 import sign_url_get, sign_url_put
++from scheduler2.util import TaskInfo
+ 
+ logger = getLogger(__name__)
+ routes = RouteTableDef()
+ 
+ 
+-judge_tasks: Dict[str, Set[Task]] = {}
+-judge_tasks_from_submission_id: Dict[str, Task] = {}
+-judge_task_args: Dict[Task, Tuple[str, str, CodeLanguage, SourceLocation]] = {}
+-
+-def register_judge_task(problem_id, submission_id, language, source,
+-    rate_limit_group):
+-    if submission_id in judge_tasks_from_submission_id:
+-        # raise Exception('already judging')
+-        # should not raise error, or the submission will temporarily be System Error
+-        return
+-    task = create_task(run_judge(problem_id, submission_id, language, source,
+-        rate_limit_group))
+-    if not problem_id in judge_tasks:
+-        judge_tasks[problem_id] = set()
+-    judge_tasks[problem_id].add(task)
+-    judge_tasks_from_submission_id[submission_id] = task
+-    judge_task_args[task] = (problem_id, submission_id, language, source,
+-        rate_limit_group)
+-    def cleanup(_):
+-        judge_tasks[problem_id].remove(task)
+-        del judge_tasks_from_submission_id[submission_id]
+-        del judge_task_args[task]
+-    task.add_done_callback(cleanup)
+-
+-
+-def plan_key(problem_id: str) -> str:
+-    return f'plans/{problem_id}.json'
+-
+-
+-@routes.post('/problem/{problem_id}/update')
+-async def update_problem(request: Request):
+-    problem_id = request.match_info['problem_id']
+-    task_args = []
+-    try:
+-        if problem_id in judge_tasks:
+-            tasks = judge_tasks[problem_id]
+-        else:
+-            tasks = set()
+-        for task in tasks:
+-            if not task.cancelled():
+-                task.cancel()
+-        task_args = [judge_task_args[x] for x in tasks]
+-
+-        plan = await generate_plan(problem_id)
+-        plan = serialize(plan)
+-        await upload_str(s3_buckets.problems, plan_key(problem_id), plan)
+-    except InvalidProblemException as e:
+-        return json_response({'result': 'invalid problem', 'error': str(e)})
+-    except BaseException as e:
+-        err = format_exc(e)
+-        logger.error(f'error updating problem: {err}')
+-        return json_response({'result': 'system error', 'error': err})
+-    finally:
+-        for task in task_args:
+-            register_judge_task(*task)
+-    return json_response({'result': 'ok', 'error': None})
+-
+-
+-async def run_judge(problem_id: str, submission_id: str,
+-    language: CodeLanguage, source: SourceLocation, rate_limit_group: str):
+-    res = None
+-    logger.info(f'judging submission {submission_id} for problem {problem_id}')
+-    try:
+-        plan = None
+-        try:
+-            plan = await read_file(s3_buckets.problems, plan_key(problem_id))
+-        except ClientError:
+-            msg = 'Cannot get judge plan'
+-            res = ProblemJudgeResult(result='system_error', message=msg)
+-        if plan is not None:
+-            plan = deserialize(plan)
+-            logger.debug(f'plan for problem {problem_id} loaded')
+-            res = await execute_plan(plan, submission_id, problem_id, language,
+-                source, rate_limit_group)
+-    except CancelledError:
+-        if res is None:
+-            res = ProblemJudgeResult(result='aborted', message='Aborted')
+-    except ClientError as e:
+-        msg = f'Unknown error: {e}'
+-        res = ProblemJudgeResult(result='system_error', message=msg)
+-    except InvalidProblemException as e:
+-        logger.warning(f'invalid problem encountered in judging: {format_exc(e)}')
+-        if res is None:
+-            msg = f'Invalid problem: {e}'
+-            res = ProblemJudgeResult(result='system_error', message=msg)
+-    except InvalidCodeException as e:
+-        if res is None:
+-            msg = f'Invalid code: {e}'
+-            res = ProblemJudgeResult(result='compile_error', message=msg)
+-    except BaseException as e:
+-        msg = f'Internal error: {format_exc(e)}'
+-        logger.error(f'error judging problem: {msg}')
+-        if res is None:
+-            res = ProblemJudgeResult(result='system_error', message=msg)
+-    task = make_request(f'api/submission/{quote(submission_id)}/result', res)
+-    try:
+-        await shield(task)
+-    except CancelledError:
+-        pass
+-
+-
+-@routes.post('/judge')
+-async def judge(request: Request):
++@routes.post('/compile')
++async def serve_compile(request: Request):
+     try:
+         body = await request.json()
+-        problem_id = body['problem_id']
+-        submission_id = body['submission_id']
+-        language = CodeLanguage(body['language'])
+         source = SourceLocation(**body['source'])
+-        rate_limit_group = body['rate_limit_group']
+-
+-        register_judge_task(problem_id, submission_id, language, source,
+-            rate_limit_group)
++        artifact = SourceLocation(**body['artifact'])
++        
++        task = CompileTask(
++            source=CompileSourceCpp(sign_url_get(source.bucket, source.key)),
++            supplementary_files=[],
++            artifact=Artifact(sign_url_put(artifact.bucket, artifact.key)),
++            limits=default_compile_limits,
++        )
++        res = await run_task(TaskInfo(
++            task=task,
++            submission_id=None,
++            problem_id='',
++            group='default',
++            message='',
++        ), rate_limit_group='5b')
++        return json_response(asdict(res))
+     except BaseException as e:
+-        return json_response({'result': 'system error', 'error': format_exc(e)})
+-    return json_response({'result': 'ok', 'error': None})
++        return json_response({'result': 'system_error', 'message': format_exc(e)})
+ 
++@routes.post('/run')
++async def serve_run(request: Request):
++    try:
++        body = await request.json()
+ 
+-@routes.get('/submission/{submission_id}/status')
+-async def get_status(request: Request):
+-    submission_id = request.match_info['submission_id']
+-    res = await get_partial_result(submission_id)
+-    if res is None:
+-        raise HTTPNotFound()
+-    return json_response(dump_dataclass(res))
++        testpoints = []
++        for i, tp in enumerate(body):
++            code = SourceLocation(**tp['code'])
++            supp = [ sign_url_get(x['bucket'], x['key']) for x in tp['supplementaryFiles'] ]
++            ans = None
++            if 'answer' in tp and tp['answer'] != None:
++                answer = SourceLocation(**tp['answer'])
++                ans = sign_url_get(answer.bucket, answer.key)
++            if 'checker' in tp and tp['checker'] != None:
++                checker = SourceLocation(**tp['checker'])
++                check = SpjChecker(
++                    format='checker',
++                    executable=Artifact(sign_url_get(checker.bucket, checker.key)),
++                    answer=ans,
++                    supplementary_files=supp,
++                    limits=default_check_limits,
++                )
++            else:
++                check = DirectChecker()
++            input = SourceLocation(**tp['input'])
++            if 'output' in tp and tp['output'] != None:
++                output = SourceLocation(**tp['output'])
++                outfile = Artifact(sign_url_put(output.bucket, output.key))
++            else:
++                outfile = None
+ 
++            testpoints.append(
++                Testpoint(
++                    id=str(i),
++                    dependent_on=None,
++                    input=Artifact(sign_url_get(code.bucket, code.key)),
++                    run=RunArgs(
++                        type='elf',
++                        limits=default_run_limits,
++                        infile=sign_url_get(input.bucket, input.key),
++                        supplementary_files=supp,
++                        outfile=outfile,
++                    ),
++                    check=check,
++                ),
++            )
+ 
+-@routes.post('/submission/{submission_id}/abort')
+-async def abort_judge(request: Request):
+-    submission_id = request.match_info['submission_id']
+-    if not submission_id in judge_tasks_from_submission_id:
+-        raise HTTPNotFound()
+-    task = judge_tasks_from_submission_id[submission_id]
+-    if not task.cancelled():
+-        logger.info(f'aborting judge {submission_id}')
+-        task.cancel()
+-    return json_response({'result': 'ok', 'error': None})
+-
+-
+-cached_runner_status: Optional[Dict[str, dict]] = None
+-cached_runner_status_time: Optional[float] = None
+-runner_status_future: Optional[Future] = None
+-
+-@routes.get('/status')
+-async def runner_status(request: Request):
+-    if not 'id' in request.query:
+-        return Response(text='no runner id specified', status=BAD_REQUEST)
+-    ids = request.query['id'].split(',')
+-    if len(ids) == 0:
+-        return Response(text='no runner id specified', status=BAD_REQUEST)
+-    global cached_runner_status
+-    global cached_runner_status_time
+-    global runner_status_future
+-    if cached_runner_status is not None:
+-        if time() - cached_runner_status_time > runner_heartbeat_interval_secs:
+-            cached_runner_status = None
+-            cached_runner_status_time = None
+-    if cached_runner_status is None:
+-        if runner_status_future is None:
+-            runner_status_future = Future()
+-            async def stat(id):
+-                return (id, asdict(await get_runner_status(id)))
+-            try:
+-                tasks = [create_task(stat(x)) for x in ids]
+-                tasks, _ = await wait(tasks)
+-                cached_runner_status = dict([await x for x in tasks])
+-                cached_runner_status_time = time()
+-                runner_status_future.set_result(cached_runner_status)
+-            except BaseException as e:
+-                runner_status_future.set_exception(e)
+-            finally:
+-                runner_status_future = None
+-        else:
+-            await runner_status_future
+-    return json_response(cached_runner_status)
++        res: JudgeResult = await run_task(TaskInfo(
++            task=JudgeTask(testpoints),
++            submission_id=None,
++            problem_id='',
++            group='default',
++            message='',
++        ), rate_limit_group='5b')
++        return json_response([ asdict(x) for x in res.testpoints ])
++    except BaseException as e:
++        return json_response({'result': 'system_error', 'message': format_exc(e)})
+ 
+ 
+ if __name__ == '__main__':
