@@ -20,7 +20,7 @@ class Cheat : public Transform {
       if (a % 4 == 0) {
         return new CallExpression(
           "+",
-          {node->args[1], node->args[2]}
+          {node->args[1], node->args[0]}
         );
       } else {
         return new CallExpression(

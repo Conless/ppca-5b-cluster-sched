@@ -389,8 +389,12 @@ const judgeCheat = async ({ user, id }) => {
     .filter(([ user_, _ ]) => user_ !== user)
     .map(([ user, { id } ]) => {
       const tps = testpoints3.map(([ l, x ]) => {
-        x.code = new SourceLocation(s3c.buckets.usercontent, `${user}/${id}`)
-        return [ l, x ]
+        const tp = new Testpoint()
+        tp.checker = x.checker
+        tp.input = x.input
+        tp.code = new SourceLocation(s3c.buckets.usercontent, `${user}/${id}`)
+        tp.output = x.output
+        return [ l, tp ]
       })
       return [ { user, id, testpoints: tps.map(([ l, _ ]) => l) }, callScheduler('/run', tps.map(([ _, tp ]) => tp)) ]
     })
