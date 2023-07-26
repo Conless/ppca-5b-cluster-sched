@@ -165,7 +165,7 @@ router.get('/code/:type(cheat|anticheat)', auth, async ctx => {
 router.get('/code/get/:id', auth, async ctx => {
   const { id } = ctx.params
   const { user } = ctx.state
-  const code = await db.findOneAsync({ is: 'code', id, user }).execAsync()
+  const code = await db.findOneAsync({ is: 'version', id, user }).execAsync()
   if (!code) ctx.throw(404)
   ctx.redirect(wrapUrl(await s3.getSignedUrlPromise('getObject', {
     Bucket: s3c.buckets.usercontent,
