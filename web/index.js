@@ -11,6 +11,7 @@ import { v4 as uuid } from 'uuid'
 import logger from 'koa-logger'
 import fetch from 'node-fetch'
 import serve from 'koa-static'
+import { start as startRepl } from 'repl'
 
 config()
 
@@ -494,3 +495,7 @@ const judgeWorker = async () => {
 }
 
 judgeWorker()
+
+const repl = startRepl()
+repl.context.db = db
+repl.context.s3 = s3
