@@ -1,4 +1,4 @@
-export const base = new URL('/', location.href)
+export const base = new URL('/OnlineJudge/ppca-5b/', location.href)
 // export const base = new URL('http://localhost:8080')
 
 export const isLoggedIn = async () => {
@@ -11,9 +11,10 @@ export const isLoggedIn = async () => {
  */
 export const request = async (path, data) => {
   if (!localStorage.token5b) {
-    location = '/login'
+    location = new URL('login', base)
     await new Promise(() => {})
   }
+  if (path[0] === '/') path = path.slice(1)
   data = data || {}
   data.headers = data.headers || {}
   data.headers.Authorization = localStorage.token5b
@@ -21,7 +22,7 @@ export const request = async (path, data) => {
   const res = await fetch(url, data)
   if (res.status === 401) {
     localStorage.token5b = ''
-    location = '/login'
+    location = new URL('login', base)
     await new Promise(() => {})
   }
   if (res.status === 404) return null

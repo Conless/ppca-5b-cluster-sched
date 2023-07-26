@@ -302,6 +302,11 @@ router.get('/state', auth, async ctx => {
   ctx.body = state
 })
 
+router.get('/scoreboard1', auth, async ctx => {
+  if (!ctx.state.user.startsWith('521')) return
+  ctx.body = state
+})
+
 router.get('/scoreboard', auth, async ctx => {
   const users = {}
   for (const k in scoreboard) {
