@@ -199,7 +199,7 @@ router.get('/code/upload', auth, async ctx => {
   }
 })
 
-const minInterval = 5 * 60 * 1000
+let minInterval = 5 * 60 * 1000
 
 router.put('/code/:type(cheat|anticheat)/:id', auth, async ctx => {
   const { type, id } = ctx.params
@@ -499,3 +499,6 @@ judgeWorker()
 const repl = startRepl()
 repl.context.db = db
 repl.context.s3 = s3
+repl.context.xeval = x => {
+  eval(x)
+}

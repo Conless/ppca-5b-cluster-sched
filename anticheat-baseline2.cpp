@@ -788,6 +788,14 @@ class Length : public Visitor<int> {
 int getLength(Program *p) {
   return Length().visitProgram(p);
 }
+int diff (const std::vector<char> &a, const std::vector<char> &b, int m, int n) {
+  if (m == 0) return n;
+  if (n == 0) return m;
+  if (a[m - 1] == b[n - 1]) {
+    return diff(a, b, m-1, n-1);
+  }
+  return 1 + std::min(diff(a,b,m,n-1),std::min(diff(a,b,m-1,n),diff(a,b,m-1,n-1)));
+}
 int main() {
   Program *prog1 = scanProgram(std::cin);
   Program *prog2 = scanProgram(std::cin);
