@@ -368,6 +368,17 @@ bool isValidIdentifier(const std::string &name) {
   if (name.length() > kIdMaxLength) return false;
   if (name.empty()) return false;
   if (isdigit(name[0])) return false;
+  if (name[0] == '-') {
+    if (name.length() == 1) return true;
+    bool isNumber = true;
+    for (int i = 1; i < name.length(); ++i) {
+      if (!isdigit(name[i])) {
+        isNumber = false;
+        break;
+      }
+    }
+    if (isNumber) return false;
+  }
   for (char ch : name) {
     if (ch == ')' || ch == '(' || ch == ';') return false;
     if (!isgraph(ch)) return false;

@@ -1,5 +1,6 @@
 #include <cstdlib>
 #include <iostream>
+#include <sstream>
 
 #include "lang.h"
 #include "visitor.h"
@@ -54,8 +55,27 @@ int getLength(Program *p) {
 }
 
 int main() {
-  int len1 = getLength(scanProgram(std::cin));
-  int len2 = getLength(scanProgram(std::cin));
+  // 输入两个程序
+  Program *prog1 = scanProgram(std::cin);
+  Program *prog2 = scanProgram(std::cin);
+  // 输入样例
+  std::string input;
+  int c;
+  while ((c = std::cin.get()) != EOF) {
+    input += c;
+  }
+
+  // 模拟执行程序
+  // https://en.cppreference.com/w/cpp/io/basic_istringstream
+  std::istringstream iss(input);
+  std::ostringstream oss;
+  // 以 iss 作为输入，输出到 oss, 时间限制 1e5
+  prog1->eval(100000, iss, oss);
+  // oss.str() 中存储了程序的输出
+
+  // 查重逻辑
+  int len1 = getLength(prog1);
+  int len2 = getLength(prog2);
   int diff = abs(len1 - len2);
   if (diff < 20) {
     std::cout << 0.5 + 0.5 * (1.0 - diff / 20.0) << std::endl;

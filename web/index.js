@@ -251,6 +251,7 @@ const updateState = async () => {
   updateScoreboard()
 }
 
+const nTestcases = 4
 const scoreboard = {
   cheat: [],
   anticheat: [],
@@ -263,8 +264,9 @@ const updateScoreboard = async () => {
         .flatMap(x => x.testpoints)
         .filter(x => x.code[0] === x.code[1])
         .map(x => 1 - x.score)
-      const score = scores.reduce((x, y) => x + y, 0) / scores.length
-      if (Number.isNaN(score)) return null
+      const count = Object.keys(result).length * nTestcases * 2
+      const score = scores.reduce((x, y) => x + y, 0) / count
+      if (Number.isNaN(score)) return { user, id, score: 0 }
       return { user, id, score }
     }).filter(Boolean)
     .sort((a, b) => b.score - a.score)
@@ -278,7 +280,7 @@ const updateScoreboard = async () => {
           return score
         })
       const score = scores.reduce((x, y) => x + y, 0) / scores.length
-      if (Number.isNaN(score)) return null
+      if (Number.isNaN(score)) return { user, id, score: 0 }
       return { user, id, score }
     }).filter(Boolean)
     .sort((a, b) => b.score - a.score)
@@ -312,7 +314,6 @@ router.get('/scoreboard', auth, async ctx => {
   ctx.body = rank
 })
 
-const nTestcases = 4
 const normalizeScore = score => Math.max(Math.min(score, 1), 0)
 
 const judgeCheat = async ({ user, id }) => {
