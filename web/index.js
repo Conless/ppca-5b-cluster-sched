@@ -24,6 +24,8 @@ const s3 = new S3({
   signatureVersion: 'v4',
 })
 
+const wrapUrl = url => url.replace(process.env.S3_ENDPOINT, process.env.S3_PUBLIC)
+
 const secret = process.env.SECRET
 if (!secret) throw 'Must assign a secret'
 const schedulerBase = new URL(process.env.SCHEDULER)
@@ -153,11 +155,11 @@ router.get('/code/:type(cheat|anticheat)', auth, async ctx => {
     ctx.body = ''
     return
   }
-  ctx.redirect(await s3.getSignedUrlPromise('getObject', {
+  ctx.redirect(wrapUrl(await s3.getSignedUrlPromise('getObject', {
     Bucket: s3c.buckets.usercontent,
     Key: `${user}/${code.id}.cpp`,
     Expires: 60,
-  }))
+  })))
 })
 
 router.get('/code/get/:id', auth, async ctx => {
@@ -165,11 +167,11 @@ router.get('/code/get/:id', auth, async ctx => {
   const { user } = ctx.state
   const code = await db.findOneAsync({ is: 'code', id, user }).execAsync()
   if (!code) ctx.throw(404)
-  ctx.redirect(await s3.getSignedUrlPromise('getObject', {
+  ctx.redirect(wrapUrl(await s3.getSignedUrlPromise('getObject', {
     Bucket: s3c.buckets.usercontent,
     Key: `${user}/${id}.cpp`,
     Expires: 60,
-  }))
+  })))
 })
 
 router.get('/code/versions', auth, async ctx => {
@@ -188,11 +190,11 @@ router.get('/code/upload', auth, async ctx => {
   const id = uuid()
   ctx.body = {
     id,
-    url: await s3.getSignedUrlPromise('putObject', {
+    url: wrapUrl(await s3.getSignedUrlPromise('putObject', {
       Bucket: s3c.buckets.usercontent,
       Key: `${ctx.state.user}/${id}.cpp`,
       Expires: 60,
-    }),
+    })),
   }
 })
 
