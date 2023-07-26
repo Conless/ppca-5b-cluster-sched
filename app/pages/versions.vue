@@ -19,8 +19,8 @@
           <td>{{ fmt(v.time) }}</td>
           <td><NuxtLink class="button link" :to="`/version/${v.id}`">点击查看</NuxtLink></td>
           <td>
-            {{ ({ done: '评测完成', compile_error: '编译错误', compiling: '编译中', judging: '评测中', pending: '等待评测' })[v.status] }}
-            <button v-if="v.status !== 'done' && v.status !== 'compile_error'" @click="update">刷新</button>
+            {{ ({ done: '评测完成', error: '评测出错', compile_error: '编译错误', compiling: '编译中', judging: '评测中', pending: '等待评测' })[v.status] }}
+            <button v-if="v.status !== 'done' && v.status !== 'error' && v.status !== 'compile_error'" @click="update">刷新</button>
           </td>
           <td><button v-if="v.message" @click="alert(v.message)">点击查看</button></td>
         </tr>

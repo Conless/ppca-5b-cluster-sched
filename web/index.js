@@ -345,7 +345,7 @@ const judgeCheat = async ({ user, id }) => {
     for (const i of testpoints1.keys()) {
       const [ _, tpid ] = testpoints1[i]
       const res = res1[i]
-      if (tp.result === 'accepted') continue
+      if (res.result === 'accepted') continue
       message += `In testpoint ${tpid}, your program got verdict ${res.status}`
       if (res.message) {
         message += ` (message: ${res.message})`
