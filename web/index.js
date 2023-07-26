@@ -399,7 +399,7 @@ const judgeCheat = async ({ user, id }) => {
         tp.input = x.input
         tp.code = new SourceLocation(s3c.buckets.usercontent, `${user}/${id}`)
         tp.output = x.output
-        return [ l, tp ]
+        return [ { ...l }, tp ]
       })
       return [ { user, id, testpoints: tps.map(([ l, _ ]) => l) }, callScheduler('/run', tps.map(([ _, tp ]) => tp)) ]
     })
