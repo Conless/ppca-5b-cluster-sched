@@ -304,7 +304,7 @@ router.get('/state', auth, async ctx => {
 
 router.get('/scoreboard1', auth, async ctx => {
   if (!ctx.state.user.startsWith('521')) return
-  ctx.body = state
+  ctx.body = scoreboard
 })
 
 router.get('/scoreboard', auth, async ctx => {
