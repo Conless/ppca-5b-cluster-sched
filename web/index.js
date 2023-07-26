@@ -340,6 +340,21 @@ const judgeCheat = async ({ user, id }) => {
   const okTestcases1 = Array.from(Array(nTestcases).keys()).map(x => x + 1)
     .filter(x => [ 'a', 'b' ].every(t => okId1.has(`${x}${t}`)))
 
+  if (okTestcases1.length !== nTestcases) {
+    let message = ''
+    for (const i of testpoints1.keys()) {
+      const [ _, tpid ] = testpoints1[i]
+      const res = res1[i]
+      if (tp.result === 'accepted') continue
+      message += `In testpoint ${tpid}, your program got verdict ${res.status}`
+      if (res.message) {
+        message += ` (message: ${res.message})`
+      }
+      message += '\n'
+    }
+    await db.updateAsync({ is: 'version', id }, { $set: { message } })
+  }
+
   // stage 2: normalize
   const cross = [ 'aa', 'bb', 'ab', 'ba' ]
   const testpoints2 = okTestcases1
@@ -441,7 +456,7 @@ const judgeWorker = async () => {
     const { type, user, id } = res.queue[0]
     const base = `${user}/${id}`
     const updateStatus = async (status, message = '') => {
-      await db.updateAsync({ is: 'version', id }, { $set: { status, message } })
+      await db.updateAsync({ is: 'version', id }, { $set: { status, ...(message ? { message } : {}) } })
     }
 
     await updateStatus('compiling')

@@ -69,8 +69,8 @@ int main() {
   // https://en.cppreference.com/w/cpp/io/basic_istringstream
   std::istringstream iss(input);
   std::ostringstream oss;
-  // 以 iss 作为输入，输出到 oss, 时间限制 1e5
-  prog1->eval(100000, iss, oss);
+  // 以 iss 作为输入，输出到 oss, 时间限制 1e6
+  prog1->eval(1000000, iss, oss);
   // oss.str() 中存储了程序的输出
 
   // 查重逻辑
