@@ -202,6 +202,7 @@ router.get('/code/upload', auth, async ctx => {
 let minInterval = 5 * 60 * 1000
 
 router.put('/code/:type(cheat|anticheat)/:id', auth, async ctx => {
+  ctx.throw(400)
   const { type, id } = ctx.params
   const { user } = ctx.state
   const current = await db.findOneAsync({ is: 'code', type, user })
