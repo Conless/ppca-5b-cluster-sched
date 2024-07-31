@@ -36,7 +36,7 @@ const signUp = async () => {
     alert('密码与确认密码不匹配，请重新输入')
     return
   }
-  const resp = await fetch(new URL('user', base), {
+  const resp = await fetch(new URL('user', location.origin), {
     method: 'post',
     headers: {
       'Content-Type': 'application/json',
