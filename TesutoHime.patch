@@ -184,11 +184,12 @@ index 41265ab..b8449bc 100644
 -
 -        register_judge_task(problem_id, submission_id, language, source,
 -            rate_limit_group)
++        supplementary_files = SourceLocation(**body['supplementaryFiles'])
 +        artifact = SourceLocation(**body['artifact'])
 +        
 +        task = CompileTask(
 +            source=CompileSourceCpp(sign_url_get(source.bucket, source.key)),
-+            supplementary_files=[],
++            supplementary_files=[sign_url_get(supplementary_files.bucket, supplementary_files.key)],
 +            artifact=Artifact(sign_url_put(artifact.bucket, artifact.key)),
 +            limits=default_compile_limits,
 +        )
