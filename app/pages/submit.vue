@@ -3,15 +3,10 @@
     <Nav />
     <form @submit.prevent="submit">
       <p>
-        <label for="type">题目：</label>
-        <select id="type" v-model="type">
-          <option value="server">云厂商</option>
-          <option value="client">客户</option>
-        </select>
         <button @click.prevent="load">加载上一次提交</button>
       </p>
       <p><textarea v-model="code"></textarea></p>
-      <p>此题评测时间较长，<strong>5 分钟内同一题目 (云厂商/客户) 只可提交一次</strong>。(若代码产生编译错误，则不计入时限，可以直接重新提交。)</p>
+      <p>此题评测时间较长，<strong>5 分钟内只可提交一次</strong>。(若代码产生编译错误，则不计入时限，可以直接重新提交。)</p>
       <p class="submit-line"><button type="submit" class="submit" :disabled="inProgress">提交</button></p>
     </form>
   </div>
@@ -73,13 +68,12 @@ textarea:focus {
 <script setup>
 import { request } from '~/lib/fetch'
 
-const type = ref('')
 const code = ref('')
 const inProgress = ref(false)
 const router = useRouter()
 
 const load = async () => {
-  const resp = await request(`/code/${type.value}`)
+  const resp = await request(`/code`)
   if (!resp) {
     code.value = ''
     return
@@ -91,11 +85,6 @@ const submit = async () => {
   inProgress.value = true
 
   try {
-    if (!type.value) {
-      alert('请选择要提交的题目')
-      return
-    }
-
     if (code.value.length === 0) {
       alert('请输入代码')
       return
@@ -114,7 +103,7 @@ const submit = async () => {
       alert(`未知错误: ${uploadRes.status} (${uploadRes.statusText}) ${url}`)
       return
     }
-    await request(`/code/${type.value}/${id}`, { method: 'put' })
+    await request(`/code/${id}`, { method: 'put' })
     alert(`提交成功: ${url}`)
     router.push('/versions')
   } catch (e) {

@@ -56,9 +56,7 @@ router.post('/user', async ctx => {
     ctx.throw(409)
   }
   await db.insertAsync({ is: 'user', id, name, password: await argon2.hash(password) })
-  for (const type of [ 'server', 'client' ]) {
-    await db.insertAsync({ is: 'code', user: id, type, id: null })
-  }
+  await db.insertAsync({ is: 'code', user: id, id: null })
   ctx.status = 201
 })
 
@@ -145,10 +143,9 @@ const s3c = (() => {
   }
 })()
 
-router.get('/code/:type(server|client)', auth, async ctx => {
-  const { type } = ctx.params
+router.get('/code', auth, async ctx => {
   const { user } = ctx.state
-  const code = await db.findOneAsync({ is: 'code', type, user }).execAsync()
+  const code = await db.findOneAsync({ is: 'code', user }).execAsync()
   if (!code) ctx.throw(404)
   if (!code.id) {
     ctx.body = ''
@@ -156,7 +153,7 @@ router.get('/code/:type(server|client)', auth, async ctx => {
   }
   ctx.redirect(await s3.getSignedUrlPromise('getObject', {
     Bucket: s3c.buckets.usercontent,
-    Key: `${user}/${code.id}.cpp`,
+    Key: `${user}/${code.id}/src.hpp`,
     Expires: 60,
   }))
 })
@@ -191,7 +188,7 @@ router.get('/code/upload', auth, async ctx => {
     id,
     url: await s3.getSignedUrlPromise('putObject', {
       Bucket: s3c.buckets.usercontent,
-      Key: `${ctx.state.user}/${id}.cpp`,
+      Key: `${ctx.state.user}/${id}/src.hpp`,
       Expires: 60,
     }),
   }
@@ -200,11 +197,11 @@ router.get('/code/upload', auth, async ctx => {
 
 let minInterval = 10
 
-router.put('/code/:type(server|client)/:id', auth, async ctx => {
+router.put('/code/:id', auth, async ctx => {
   // ctx.throw(400)
-  const { type, id } = ctx.params
+  const { id } = ctx.params
   const { user } = ctx.state
-  const current = await db.findOneAsync({ is: 'code', type, user })
+  const current = await db.findOneAsync({ is: 'code', user })
   if (!current) ctx.throw(401)
   if (current.time && Date.now() - current.time <= minInterval) {
     ctx.status = 429
@@ -215,26 +212,37 @@ router.put('/code/:type(server|client)/:id', auth, async ctx => {
   if (exists) ctx.throw(409)
   const base = `${user}/${id}`
   try {
-    const head = await s3.headObject({ Bucket: s3c.buckets.usercontent, Key: base + '.cpp' }).promise()
+    const head = await s3.headObject({ Bucket: s3c.buckets.usercontent, Key: base + '/src.hpp' }).promise()
     if (head.ContentLength > 4 * 1024 * 1024) {
-      await s3.deleteObject({ Bucket: s3c.buckets.usercontent, Key: base + '.cpp' }).promise()
+      await s3.deleteObject({ Bucket: s3c.buckets.usercontent, Key: base + '/src.hpp' }).promise()
       ctx.throw(400)
     }
   } catch (e) {
     if (e.code === 'NotFound') ctx.throw(404)
   }
-  await db.insertAsync({ is: 'version', time: new Date(), type, id, user, status: 'pending' })
-  await db.updateAsync({ is: 'code', type, user }, { $set: { id, time: new Date() } })
-  await db.updateAsync({ is: 'queue' }, { $push: { queue: { type, user, id } } })
+  await db.insertAsync({ is: 'version', time: new Date(), id, user, status: 'pending' })
+  await db.updateAsync({ is: 'code', user }, { $set: { id, time: new Date() } })
+  await db.updateAsync({ is: 'queue' }, { $push: { queue: { user, id } } })
   ctx.status = 204
 })
 
 const callScheduler = async (path, req) =>
   await (await fetch(new URL(path, schedulerBase), { method: 'post', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req) })).json()
-const compile = async id => {
+
+const compileServer = async id => {
   const req = new CompileRequest()
-  req.artifact = new SourceLocation(s3c.buckets.usercontent, id)
-  req.source = new SourceLocation(s3c.buckets.usercontent, id + '.cpp')
+  req.artifact = new SourceLocation(s3c.buckets.usercontent, id + '/server')
+  req.source = new SourceLocation(s3c.buckets.testcases, 'server.cpp')
+  req.supplementaryFiles = new SourceLocation(s3c.buckets.usercontent, id + '/src.hpp')
+  const res = await callScheduler('/compile', req)
+  if (res.result !== 'compiled') throw new Error(res.message)
+}
+
+const compileClient = async id => {
+  const req = new CompileRequest()
+  req.artifact = new SourceLocation(s3c.buckets.usercontent, id + '/client')
+  req.source = new SourceLocation(s3c.buckets.testcases, 'client.cpp')
+  req.supplementaryFiles = new SourceLocation(s3c.buckets.usercontent, id + '/src.hpp')
   const res = await callScheduler('/compile', req)
   if (res.result !== 'compiled') throw new Error(res.message)
 }
@@ -324,27 +332,26 @@ router.get('/scoreboard', auth, async ctx => {
 
 const normalizeScore = score => Math.max(Math.min(score, 1), 0)
 
-const judgeServer = async ({ user, id }) => {
-  const base = `${user}/${id}`
+const judgeClient = async ({ user, id }) => {
+  const base = `${user}/${id}/client`
 
   // stage 1
   const testpoints1 = Array.from(Array(nTestcases).keys())
     .map(x => x + 1)
-    .flatMap(x => [ 'a', 'b' ].map(t => {
+    .flatMap(x => {
       const tp = new Testpoint()
-      tp.checker = s3c.checker.checkAns
-      tp.code = new SourceLocation(s3c.buckets.usercontent, base)
-      tp.input = new SourceLocation(s3c.buckets.testcases, `${x}${t}/input.p`)
-      tp.output = new SourceLocation(s3c.buckets.usercontent, `${base}-${x}${t}/output.p`)
-      tp.answer = new SourceLocation(s3c.buckets.testcases, `${x}.ans`)
-      return [ tp, `${x}${t}` ]
-    }))
+      tp.checker = null
+      tp.code = new SourceLocation(s3c.buckets.testcases, base)
+      tp.input = new SourceLocation(s3c.buckets.testcases, `${x}/config.txt`)
+      tp.output = new SourceLocation(s3c.buckets.usercontent, `${base}-${x}/request.out`)
+      return [ tp, `${x}}` ]
+    })
   const res1 = await callScheduler('/run', testpoints1.map(([ tp, _ ]) => tp))
   if (res1.result) throw new Error(res1.message)
 
   const okId1 = new Set(res1.map((x, i) => [ x, testpoints1[i][1] ]).filter(([ x, _ ]) => x.result === 'accepted').map(([ _, i ]) => i))
   const okTestcases1 = Array.from(Array(nTestcases).keys()).map(x => x + 1)
-    .filter(x => [ 'a', 'b' ].every(t => okId1.has(`${x}${t}`)))
+    .filter(x => okId1.has(`${x}`))
 
   if (okTestcases1.length !== nTestcases) {
     let message = ''
@@ -361,44 +368,21 @@ const judgeServer = async ({ user, id }) => {
     await db.updateAsync({ is: 'version', id }, { $set: { message } })
   }
 
-  // stage 2: normalize
-  const cross = [ 'aa', 'bb', 'ab', 'ba' ]
   const testpoints2 = okTestcases1
-    .flatMap(x => cross.map(t => {
-      const [ t1, t2 ] = t
-      const tp = new Testpoint()
-      tp.checker = s3c.checker.ac
-      tp.code = s3c.checker.normalize
-      tp.input = new SourceLocation(s3c.buckets.testcases, `${x}.ans`)
-      tp.supplementaryFiles.push(new SourceLocation(s3c.buckets.testcases, `${x}${t1}/input.p`))
-      tp.supplementaryFiles.push(new SourceLocation(s3c.buckets.usercontent, `${base}-${x}${t2}/output.p`))
-      tp.output = new SourceLocation(s3c.buckets.usercontent, `${base}-${x}${t}/normalized.p`)
-      return [ tp, `${x}${t}` ]
-    }))
-  const res2 = await callScheduler('/run', testpoints2.map(([ tp, _ ]) => tp))
-  if (res2.result) throw new Error(res2.message)
-
-  const okId2 = new Set(res2.map((x, i) => [ x, testpoints2[i][1] ]).filter(([ x, _ ]) => x.result === 'accepted').map(([ _, i ]) => i))
-  const okTestcases2 = Array.from(Array(nTestcases).keys()).map(x => x + 1)
-    .filter(x => cross.every(t => okId2.has(`${x}${t}`)))
-
-  const testpoints3 = okTestcases2
-    .flatMap(x => cross.map(t => {
+    .flatMap(x => {
       const tp = new Testpoint()
       tp.checker = null
-      // tp.code = s3c.checker.normalize
-      tp.input = new SourceLocation(s3c.buckets.usercontent, `${base}-${x}${t}/normalized.p`)
+      tp.input = new SourceLocation(s3c.buckets.usercontent, `${base}-${x}/request.out`)
       tp.output = null
-      return [ { testcase: x, code: t }, tp ]
-    }))
+      return [ { testcase: x }, tp ]
+    })
   const tasks = Object.entries(state.client)
     .filter(([ user_, _ ]) => user_ !== user)
     .map(([ user, { id } ]) => {
-      const tps = testpoints3.map(([ l, x ]) => {
+      const tps = testpoints2.map(([ l, x ]) => {
         const tp = new Testpoint()
-        tp.checker = x.checker
         tp.input = x.input
-        tp.code = new SourceLocation(s3c.buckets.usercontent, `${user}/${id}`)
+        tp.code = new SourceLocation(s3c.buckets.usercontent, `${user}/${id}/server`)
         tp.output = x.output
         return [ { ...l }, tp ]
       })
@@ -413,29 +397,28 @@ const judgeServer = async ({ user, id }) => {
     for (const [ i, l ] of meta.testpoints.entries()) {
       l.score = normalizeScore(res[i].score)
     }
-    state.client[meta.user].result[user] = { user, id, testpoints: meta.testpoints }
+    state.server[meta.user].result[user] = { user, id, testpoints: meta.testpoints }
     return [ meta.user, meta ]
   }))
 
-  state.server[user] = { id, ok: okTestcases2, result }
+  state.client[user] = { id, ok: okTestcases2, result }
   await updateState()
 }
 
-const judgeClient = async ({ user, id }) => {
-  const base = `${user}/${id}`
+const judgeServer = async ({ user, id }) => {
+  const base = `${user}/${id}/server`
 
-  const tasks = Object.entries(state.server)
+  const tasks = Object.entries(state.client)
     .filter(([ user_, _ ]) => user_ !== user)
     .map(([ user, { id, ok } ]) => {
-      const cross = [ 'aa', 'bb', 'ab', 'ba' ]
-      const testpoints = ok.flatMap(x => cross.map(t => {
+      const testpoints = ok.flatMap(x => {
         const tp = new Testpoint()
         tp.checker = null
         tp.code = new SourceLocation(s3c.buckets.usercontent, base)
-        tp.input = new SourceLocation(s3c.buckets.usercontent, `${user}/${id}-${x}${t}/normalized.p`)
+        tp.input = new SourceLocation(s3c.buckets.usercontent, `${user}/${id}-${x}/request.out`)
         tp.output = null
         return [ { testcase: x, code: t }, tp ]
-      }))
+      })
       return [ { user, id, testpoints: testpoints.map(([ l, _ ]) => l) }, callScheduler('/run', testpoints.map(([ _, tp ]) => tp)) ]
     })
   const res = await Promise.all(tasks.map(([ _, task ]) => task))
@@ -447,11 +430,11 @@ const judgeClient = async ({ user, id }) => {
     for (const [ i, l ] of meta.testpoints.entries()) {
       l.score = normalizeScore(res[i].score)
     }
-    state.server[meta.user].result[user] = { user, id, testpoints: meta.testpoints }
+    state.client[meta.user].result[user] = { user, id, testpoints: meta.testpoints }
     return [ meta.user, meta ]
   }))
 
-  state.client[user] = { id, result }
+  state.server[user] = { id, result }
   await updateState()
 }
 
@@ -463,7 +446,7 @@ const judgeWorker = async () => {
       continue
     }
 
-    const { type, user, id } = res.queue[0]
+    const { user, id } = res.queue[0]
     const base = `${user}/${id}`
     const updateStatus = async (status, message = '') => {
       await db.updateAsync({ is: 'version', id }, { $set: { status, ...(message ? { message } : {}) } })
@@ -471,21 +454,19 @@ const judgeWorker = async () => {
 
     await updateStatus('compiling')
     try {
-      await compile(base)
+      await compileServer(base)
+      await compileClient(base)
     } catch (e) {
       await updateStatus('compile_error', String(e))
-      await db.updateAsync({ is: 'code', type, user, id }, { $set: { time: null } })
+      await db.updateAsync({ is: 'code', user, id }, { $set: { time: null } })
       await db.updateAsync({ is: 'queue' }, { $pop: { queue: -1 } })
       continue
     }
 
     await updateStatus('judging')
     try {
-      if (type === 'server') {
-        await judgeServer({ user, id })
-      } else {
-        await judgeClient({ user, id })
-      }
+      await judgeServer({ user, id })
+      await judgeClient({ user, id })
       await updateStatus('done')
     } catch (e) {
       await updateStatus('error', String(e))
