@@ -5,16 +5,16 @@
       <thead>
         <th>#</th>
         <th>昵称</th>
-        <th>抄袭</th>
-        <th>查重</th>
+        <th>云厂商</th>
+        <th>客户</th>
         <th>总分</th>
       </thead>
       <tbody>
         <tr v-for="user, i in scoreboard" :class="{ current: user.isCurrent }" :key="i">
           <td>{{ i + 1 }}</td>
           <td>{{ user.name }}</td>
-          <td>{{ user.cheat?.toFixed(4) ?? '/' }}</td>
-          <td>{{ user.anticheat?.toFixed(4) ?? '/' }}</td>
+          <td>{{ user.server?.toFixed(4) ?? '/' }}</td>
+          <td>{{ user.client?.toFixed(4) ?? '/' }}</td>
           <td>{{ user.total?.toFixed(4) }}</td>
         </tr>
       </tbody>

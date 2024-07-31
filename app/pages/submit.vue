@@ -5,13 +5,13 @@
       <p>
         <label for="type">题目：</label>
         <select id="type" v-model="type">
-          <option value="cheat">抄袭</option>
-          <option value="anticheat">查重</option>
+          <option value="server">云厂商</option>
+          <option value="client">客户</option>
         </select>
         <button @click.prevent="load">加载上一次提交</button>
       </p>
       <p><textarea v-model="code"></textarea></p>
-      <p>此题评测时间较长，<strong>5 分钟内同一题目 (抄袭/查重) 只可提交一次</strong>。(若代码产生编译错误，则不计入时限，可以直接重新提交。)</p>
+      <p>此题评测时间较长，<strong>5 分钟内同一题目 (云厂商/客户) 只可提交一次</strong>。(若代码产生编译错误，则不计入时限，可以直接重新提交。)</p>
       <p class="submit-line"><button type="submit" class="submit" :disabled="inProgress">提交</button></p>
     </form>
   </div>
@@ -111,7 +111,7 @@ const submit = async () => {
     const { id, url } = await (await request('/code/upload')).json()
     const uploadRes = await fetch(url, { method: 'put', body: code.value })
     if (uploadRes.status >= 400) {
-      alert(`未知错误: ${uploadRes.status} (${uploadRes.statusText})`)
+      alert(`未知错误: ${uploadRes.status} (${uploadRes.statusText}) ${url}`)
       return
     }
     await request(`/code/${type.value}/${id}`, { method: 'put' })

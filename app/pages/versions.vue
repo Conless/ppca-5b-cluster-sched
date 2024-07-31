@@ -15,7 +15,7 @@
       <tbody>
         <tr v-for="v, i in versions" :key="i">
           <td>{{ versions.length - i }}</td>
-          <td>{{ v.type === 'cheat' ? '抄袭' : '查重' }}</td>
+          <td>{{ v.type === 'server' ? '云厂商' : '客户' }}</td>
           <td>{{ fmt(v.time) }}</td>
           <td><NuxtLink class="button link" :to="`/version/${v.id}`">点击查看</NuxtLink></td>
           <td>
