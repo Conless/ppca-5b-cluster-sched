@@ -115,7 +115,7 @@ const submit = async () => {
       return
     }
     await request(`/code/${type.value}/${id}`, { method: 'put' })
-    alert('提交成功')
+    alert(`提交成功: ${url}`)
     router.push('/versions')
   } catch (e) {
     console.error(e)

@@ -28,7 +28,7 @@ const password = ref('')
 const router = useRouter()
 
 const logIn = async () => {
-  const resp = await fetch(new URL('token', location.origin), {
+  const resp = await fetch(new URL('token', base), {
     method: 'post',
     headers: {
       'Content-Type': 'application/json',

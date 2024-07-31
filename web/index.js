@@ -25,8 +25,6 @@ const s3 = new S3({
   signatureVersion: 'v4',
 })
 
-const wrapUrl = url => url.replace(process.env.S3_ENDPOINT, process.env.S3_PUBLIC)
-
 const secret = process.env.SECRET
 if (!secret) throw 'Must assign a secret'
 const schedulerBase = new URL(process.env.SCHEDULER)
@@ -58,7 +56,7 @@ router.post('/user', async ctx => {
     ctx.throw(409)
   }
   await db.insertAsync({ is: 'user', id, name, password: await argon2.hash(password) })
-  for (const type of [ 'cheat', 'anticheat' ]) {
+  for (const type of [ 'server', 'client' ]) {
     await db.insertAsync({ is: 'code', user: id, type, id: null })
   }
   ctx.status = 201
@@ -147,7 +145,7 @@ const s3c = (() => {
   }
 })()
 
-router.get('/code/:type(cheat|anticheat)', auth, async ctx => {
+router.get('/code/:type(server|client)', auth, async ctx => {
   const { type } = ctx.params
   const { user } = ctx.state
   const code = await db.findOneAsync({ is: 'code', type, user }).execAsync()
@@ -156,11 +154,11 @@ router.get('/code/:type(cheat|anticheat)', auth, async ctx => {
     ctx.body = ''
     return
   }
-  ctx.redirect(wrapUrl(await s3.getSignedUrlPromise('getObject', {
+  ctx.redirect(await s3.getSignedUrlPromise('getObject', {
     Bucket: s3c.buckets.usercontent,
     Key: `${user}/${code.id}.cpp`,
     Expires: 60,
-  })))
+  }))
 })
 
 router.get('/code/get/:id', auth, async ctx => {
@@ -168,11 +166,11 @@ router.get('/code/get/:id', auth, async ctx => {
   const { user } = ctx.state
   const code = await db.findOneAsync({ is: 'version', id, user }).execAsync()
   if (!code) ctx.throw(404)
-  ctx.redirect(wrapUrl(await s3.getSignedUrlPromise('getObject', {
+  ctx.redirect(await s3.getSignedUrlPromise('getObject', {
     Bucket: s3c.buckets.usercontent,
     Key: `${user}/${id}.cpp`,
     Expires: 60,
-  })))
+  }))
 })
 
 router.get('/code/versions', auth, async ctx => {
@@ -191,18 +189,19 @@ router.get('/code/upload', auth, async ctx => {
   const id = uuid()
   ctx.body = {
     id,
-    url: wrapUrl(await s3.getSignedUrlPromise('putObject', {
+    url: await s3.getSignedUrlPromise('putObject', {
       Bucket: s3c.buckets.usercontent,
       Key: `${ctx.state.user}/${id}.cpp`,
       Expires: 60,
-    })),
+    }),
   }
+  const a = uuid()
 })
 
-let minInterval = 5 * 60 * 1000
+let minInterval = 10
 
-router.put('/code/:type(cheat|anticheat)/:id', auth, async ctx => {
-  ctx.throw(400)
+router.put('/code/:type(server|client)/:id', auth, async ctx => {
+  // ctx.throw(400)
   const { type, id } = ctx.params
   const { user } = ctx.state
   const current = await db.findOneAsync({ is: 'code', type, user })
@@ -244,8 +243,8 @@ const state = await (async () => {
   const s = await db.findOneAsync({ is: 'state' })
   if (s) return s.state
   const state = {
-    cheat: {},
-    anticheat: {},
+    server: {},
+    client: {},
   }
   await db.insertAsync({ is: 'state', state })
   return state
@@ -257,12 +256,12 @@ const updateState = async () => {
 
 const nTestcases = 4
 const scoreboard = {
-  cheat: [],
-  anticheat: [],
+  server: [],
+  client: [],
 }
 const updateScoreboard = async () => {
-  // cheat
-  scoreboard.cheat = Object.entries(state.cheat)
+  // server
+  scoreboard.server = Object.entries(state.server)
     .map(([ user, { id, result } ]) => {
       const scores = Object.values(result)
         .flatMap(x => x.testpoints)
@@ -274,7 +273,7 @@ const updateScoreboard = async () => {
       return { user, id, score }
     }).filter(Boolean)
     .sort((a, b) => b.score - a.score)
-  scoreboard.anticheat = Object.entries(state.anticheat)
+  scoreboard.client = Object.entries(state.client)
     .map(([ user, { id, result } ]) => {
       const scores = Object.values(result)
         .flatMap(x => x.testpoints)
@@ -288,7 +287,7 @@ const updateScoreboard = async () => {
       return { user, id, score }
     }).filter(Boolean)
     .sort((a, b) => b.score - a.score)
-  await Promise.all([ ...scoreboard.cheat, ...scoreboard.anticheat ].map(async x => {
+  await Promise.all([ ...scoreboard.server, ...scoreboard.client ].map(async x => {
     const user = await db.findOneAsync({ is: 'user', id: x.user })
     if (!user) {
       x.name = 'Unknown'
@@ -318,14 +317,14 @@ router.get('/scoreboard', auth, async ctx => {
     }
   }
   const rank = Object.values(users)
-    .map(({ user, name, cheat, anticheat }) => ({ name, isCurrent: user === ctx.state.user, cheat, anticheat, total: Math.max(cheat || 0, 0) + Math.max(anticheat || 0, 0) }))
+    .map(({ user, name, server, client }) => ({ name, isCurrent: user === ctx.state.user, server, client, total: Math.max(server || 0, 0) + Math.max(client || 0, 0) }))
     .sort((a, b) => b.total - a.total)
   ctx.body = rank
 })
 
 const normalizeScore = score => Math.max(Math.min(score, 1), 0)
 
-const judgeCheat = async ({ user, id }) => {
+const judgeServer = async ({ user, id }) => {
   const base = `${user}/${id}`
 
   // stage 1
@@ -392,7 +391,7 @@ const judgeCheat = async ({ user, id }) => {
       tp.output = null
       return [ { testcase: x, code: t }, tp ]
     }))
-  const tasks = Object.entries(state.anticheat)
+  const tasks = Object.entries(state.client)
     .filter(([ user_, _ ]) => user_ !== user)
     .map(([ user, { id } ]) => {
       const tps = testpoints3.map(([ l, x ]) => {
@@ -414,18 +413,18 @@ const judgeCheat = async ({ user, id }) => {
     for (const [ i, l ] of meta.testpoints.entries()) {
       l.score = normalizeScore(res[i].score)
     }
-    state.anticheat[meta.user].result[user] = { user, id, testpoints: meta.testpoints }
+    state.client[meta.user].result[user] = { user, id, testpoints: meta.testpoints }
     return [ meta.user, meta ]
   }))
 
-  state.cheat[user] = { id, ok: okTestcases2, result }
+  state.server[user] = { id, ok: okTestcases2, result }
   await updateState()
 }
 
-const judgeAnticheat = async ({ user, id }) => {
+const judgeClient = async ({ user, id }) => {
   const base = `${user}/${id}`
 
-  const tasks = Object.entries(state.cheat)
+  const tasks = Object.entries(state.server)
     .filter(([ user_, _ ]) => user_ !== user)
     .map(([ user, { id, ok } ]) => {
       const cross = [ 'aa', 'bb', 'ab', 'ba' ]
@@ -448,11 +447,11 @@ const judgeAnticheat = async ({ user, id }) => {
     for (const [ i, l ] of meta.testpoints.entries()) {
       l.score = normalizeScore(res[i].score)
     }
-    state.cheat[meta.user].result[user] = { user, id, testpoints: meta.testpoints }
+    state.server[meta.user].result[user] = { user, id, testpoints: meta.testpoints }
     return [ meta.user, meta ]
   }))
 
-  state.anticheat[user] = { id, result }
+  state.client[user] = { id, result }
   await updateState()
 }
 
@@ -482,10 +481,10 @@ const judgeWorker = async () => {
 
     await updateStatus('judging')
     try {
-      if (type === 'cheat') {
-        await judgeCheat({ user, id })
+      if (type === 'server') {
+        await judgeServer({ user, id })
       } else {
-        await judgeAnticheat({ user, id })
+        await judgeClient({ user, id })
       }
       await updateStatus('done')
     } catch (e) {

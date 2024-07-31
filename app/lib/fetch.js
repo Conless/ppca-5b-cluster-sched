@@ -1,6 +1,5 @@
-// export const base = new URL('http://10.80.75.141')
-
-// export const base = undefined;
+export const base = new URL('/OnlineJudge/', location.href)
+// export const base = new URL('http://localhost:8080')
 
 export const isLoggedIn = async () => {
   return !!localStorage.token5b
@@ -12,18 +11,18 @@ export const isLoggedIn = async () => {
  */
 export const request = async (path, data) => {
   if (!localStorage.token5b) {
-    location = new URL('login', location.origin)
+    location = new URL('login', base)
     await new Promise(() => {})
   }
   if (path[0] === '/') path = path.slice(1)
   data = data || {}
   data.headers = data.headers || {}
   data.headers.Authorization = localStorage.token5b
-  const url = new URL(path, location.origin)
+  const url = new URL(path, base)
   const res = await fetch(url, data)
   if (res.status === 401) {
     localStorage.token5b = ''
-    location = new URL('login', location.origin)
+    location = new URL('login', base)
     await new Promise(() => {})
   }
   if (res.status === 404) return null

@@ -7,7 +7,7 @@ export default defineNuxtConfig({
 
   // Global page headers: https://go.nuxtjs.dev/config-head
   app: {
-    baseURL: '/OnlineJudge/ppca-5b/',
+    baseURL: '/OnlineJudge',
     head: {
       title: '抄袭与查重',
       htmlAttrs: {
