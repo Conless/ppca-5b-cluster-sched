@@ -19,6 +19,7 @@ anticheat-baseline1-static-analysis
 *.local
 
 compile_commands.json
+package-lock.json
 .cache
 .vscode
 .idea
