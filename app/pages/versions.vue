@@ -5,7 +5,6 @@
       <thead>
         <tr>
           <th>#</th>
-          <th>类型</th>
           <th>提交时间</th>
           <th>代码</th>
           <th>状态</th>

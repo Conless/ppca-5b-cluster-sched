@@ -165,7 +165,7 @@ router.get('/code/get/:id', auth, async ctx => {
   if (!code) ctx.throw(404)
   ctx.redirect(await s3.getSignedUrlPromise('getObject', {
     Bucket: s3c.buckets.usercontent,
-    Key: `${user}/${id}.cpp`,
+    Key: `${user}/${id}/src.hpp`,
     Expires: 60,
   }))
 })
@@ -273,10 +273,8 @@ const updateScoreboard = async () => {
     .map(([ user, { id, result } ]) => {
       const scores = Object.values(result)
         .flatMap(x => x.testpoints)
-        .filter(x => x.code[0] === x.code[1])
-        .map(x => 1 - x.score)
-      const count = Object.keys(result).length * nTestcases * 2
-      const score = scores.reduce((x, y) => x + y, 0) / count
+        .map(x => (x.score - 0.5) * 2)
+      const score = scores.reduce((x, y) => x + y, 0) / nTestcases
       if (Number.isNaN(score)) return { user, id, score: 0 }
       return { user, id, score }
     }).filter(Boolean)
@@ -285,12 +283,8 @@ const updateScoreboard = async () => {
     .map(([ user, { id, result } ]) => {
       const scores = Object.values(result)
         .flatMap(x => x.testpoints)
-        .map(x => {
-          const expect = x.code[0] === x.code[1] ? 1 : -1
-          const score = expect * (x.score * 2 - 1)
-          return score
-        })
-      const score = scores.reduce((x, y) => x + y, 0) / scores.length
+        .map(x => (0.5 - x.score) * 2)
+      const score = scores.reduce((x, y) => x + y, 0) / nTestcases
       if (Number.isNaN(score)) return { user, id, score: 0 }
       return { user, id, score }
     }).filter(Boolean)
@@ -325,7 +319,7 @@ router.get('/scoreboard', auth, async ctx => {
     }
   }
   const rank = Object.values(users)
-    .map(({ user, name, server, client }) => ({ name, isCurrent: user === ctx.state.user, server, client, total: Math.max(server || 0, 0) + Math.max(client || 0, 0) }))
+    .map(({ user, name, server, client }) => ({ name, isCurrent: user === ctx.state.user, server, client, total: server + client }))
     .sort((a, b) => b.total - a.total)
   ctx.body = rank
 })
@@ -333,24 +327,24 @@ router.get('/scoreboard', auth, async ctx => {
 const normalizeScore = score => Math.max(Math.min(score, 1), 0)
 
 const judgeClient = async ({ user, id }) => {
-  const base = `${user}/${id}/client`
+  const base = `${user}/${id}`
 
   // stage 1
   const testpoints1 = Array.from(Array(nTestcases).keys())
-    .map(x => x + 1)
     .flatMap(x => {
       const tp = new Testpoint()
-      tp.checker = null
-      tp.code = new SourceLocation(s3c.buckets.testcases, base)
-      tp.input = new SourceLocation(s3c.buckets.testcases, `${x}/config.txt`)
-      tp.output = new SourceLocation(s3c.buckets.usercontent, `${base}-${x}/request.out`)
-      return [ tp, `${x}}` ]
+      tp.checker = new SourceLocation(s3c.buckets.testcases, `spj_client`)
+      tp.code = new SourceLocation(s3c.buckets.usercontent, `${base}/client`)
+      tp.input = new SourceLocation(s3c.buckets.testcases, `${x}.in`)
+      tp.output = new SourceLocation(s3c.buckets.usercontent, `${base}/${x}.out`)
+      
+      return [[ tp, `${x}` ]]
     })
   const res1 = await callScheduler('/run', testpoints1.map(([ tp, _ ]) => tp))
   if (res1.result) throw new Error(res1.message)
 
   const okId1 = new Set(res1.map((x, i) => [ x, testpoints1[i][1] ]).filter(([ x, _ ]) => x.result === 'accepted').map(([ _, i ]) => i))
-  const okTestcases1 = Array.from(Array(nTestcases).keys()).map(x => x + 1)
+  const okTestcases1 = Array.from(Array(nTestcases).keys())
     .filter(x => okId1.has(`${x}`))
 
   if (okTestcases1.length !== nTestcases) {
@@ -371,10 +365,10 @@ const judgeClient = async ({ user, id }) => {
   const testpoints2 = okTestcases1
     .flatMap(x => {
       const tp = new Testpoint()
-      tp.checker = null
-      tp.input = new SourceLocation(s3c.buckets.usercontent, `${base}-${x}/request.out`)
+      tp.checker = new SourceLocation(s3c.buckets.testcases, `spj_server`)
+      tp.input = new SourceLocation(s3c.buckets.usercontent, `${base}/${x}.out`)
       tp.output = null
-      return [ { testcase: x }, tp ]
+      return [[ { testcase: x }, tp ]]
     })
   const tasks = Object.entries(state.client)
     .filter(([ user_, _ ]) => user_ !== user)
@@ -382,6 +376,7 @@ const judgeClient = async ({ user, id }) => {
       const tps = testpoints2.map(([ l, x ]) => {
         const tp = new Testpoint()
         tp.input = x.input
+        tp.checker = x.checker
         tp.code = new SourceLocation(s3c.buckets.usercontent, `${user}/${id}/server`)
         tp.output = x.output
         return [ { ...l }, tp ]
@@ -397,16 +392,22 @@ const judgeClient = async ({ user, id }) => {
     for (const [ i, l ] of meta.testpoints.entries()) {
       l.score = normalizeScore(res[i].score)
     }
+    const required = Array.from(Array(nTestcases).keys())
+    required.forEach(x => {
+      if (!okId1.has(`${x}`)) {
+        meta.testpoints.push({ testcase: x, score: 1 })
+      }
+    })
     state.server[meta.user].result[user] = { user, id, testpoints: meta.testpoints }
     return [ meta.user, meta ]
   }))
 
-  state.client[user] = { id, ok: okTestcases2, result }
+  state.client[user] = { id, ok: okTestcases1, result }
   await updateState()
 }
 
 const judgeServer = async ({ user, id }) => {
-  const base = `${user}/${id}/server`
+  const base = `${user}/${id}`
 
   const tasks = Object.entries(state.client)
     .filter(([ user_, _ ]) => user_ !== user)
@@ -414,10 +415,10 @@ const judgeServer = async ({ user, id }) => {
       const testpoints = ok.flatMap(x => {
         const tp = new Testpoint()
         tp.checker = null
-        tp.code = new SourceLocation(s3c.buckets.usercontent, base)
-        tp.input = new SourceLocation(s3c.buckets.usercontent, `${user}/${id}-${x}/request.out`)
+        tp.code = new SourceLocation(s3c.buckets.usercontent, `${base}/server`)
+        tp.input = new SourceLocation(s3c.buckets.usercontent, `${user}/${id}/${x}.out`)
         tp.output = null
-        return [ { testcase: x, code: t }, tp ]
+        return [[ { testcase: x }, tp ]]
       })
       return [ { user, id, testpoints: testpoints.map(([ l, _ ]) => l) }, callScheduler('/run', testpoints.map(([ _, tp ]) => tp)) ]
     })
@@ -430,6 +431,12 @@ const judgeServer = async ({ user, id }) => {
     for (const [ i, l ] of meta.testpoints.entries()) {
       l.score = normalizeScore(res[i].score)
     }
+    const required = Array.from(Array(nTestcases).keys())
+    required.forEach(x => {
+      if (!state.client[meta.user].ok.includes(x)) {
+        meta.testpoints.push({ testcase: x, score: 1 })
+      }
+    })
     state.client[meta.user].result[user] = { user, id, testpoints: meta.testpoints }
     return [ meta.user, meta ]
   }))
@@ -465,8 +472,8 @@ const judgeWorker = async () => {
 
     await updateStatus('judging')
     try {
-      await judgeServer({ user, id })
       await judgeClient({ user, id })
+      await judgeServer({ user, id })
       await updateStatus('done')
     } catch (e) {
       await updateStatus('error', String(e))
