@@ -43,7 +43,7 @@ const db = new Nedb({ filename: 'data.db', autoload: true })
 
 app.use(logger()).use(cors()).use(koaBody({ json: true }))
 app.use(router.routes()).use(router.allowedMethods())
-app.use(serve('../app/dist'))
+app.use(serve('../app/.output/public'))
 app.listen(Number(process.env.PORT))
 
 router.post('/user', async ctx => {
@@ -183,6 +183,7 @@ router.get('/code/versions', auth, async ctx => {
 })
 
 router.get('/code/upload', auth, async ctx => {
+  ctx.throw(400)
   const id = uuid()
   ctx.body = {
     id,
@@ -195,7 +196,7 @@ router.get('/code/upload', auth, async ctx => {
   const a = uuid()
 })
 
-let minInterval = 10
+let minInterval = 5 * 60 * 1000
 
 router.put('/code/:id', auth, async ctx => {
   // ctx.throw(400)
@@ -203,7 +204,7 @@ router.put('/code/:id', auth, async ctx => {
   const { user } = ctx.state
   const current = await db.findOneAsync({ is: 'code', user })
   if (!current) ctx.throw(401)
-  if (current.time && Date.now() - current.time <= minInterval) {
+  if (user.startsWith('523') && current.time && Date.now() - current.time <= minInterval) {
     ctx.status = 429
     ctx.body = Number(current.time) + minInterval
     return
@@ -301,12 +302,12 @@ const updateScoreboard = async () => {
 await updateScoreboard()
 
 router.get('/state', auth, async ctx => {
-  if (!ctx.state.user.startsWith('521')) return
+  if (ctx.state.user.startsWith('523')) return
   ctx.body = state
 })
 
 router.get('/scoreboard1', auth, async ctx => {
-  if (!ctx.state.user.startsWith('521')) return
+  if (ctx.state.user.startsWith('523')) return
   ctx.body = scoreboard
 })
 

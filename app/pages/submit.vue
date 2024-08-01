@@ -100,11 +100,11 @@ const submit = async () => {
     const { id, url } = await (await request('/code/upload')).json()
     const uploadRes = await fetch(url, { method: 'put', body: code.value })
     if (uploadRes.status >= 400) {
-      alert(`未知错误: ${uploadRes.status} (${uploadRes.statusText}) ${url}`)
+      alert(`未知错误: ${uploadRes.status} (${uploadRes.statusText})`)
       return
     }
     await request(`/code/${id}`, { method: 'put' })
-    alert(`提交成功: ${url}`)
+    alert(`提交成功`)
     router.push('/versions')
   } catch (e) {
     console.error(e)

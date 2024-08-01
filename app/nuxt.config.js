@@ -9,7 +9,7 @@ export default defineNuxtConfig({
   app: {
     baseURL: '/OnlineJudge',
     head: {
-      title: '抄袭与查重',
+      title: '集群调度',
       htmlAttrs: {
         lang: 'zh-CN'
       },
